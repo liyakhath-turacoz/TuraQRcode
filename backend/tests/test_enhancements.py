@@ -63,6 +63,26 @@ def test_default_assignment_on_create_bulk_update_and_deletion_protection(client
     assert client.get('/api/projects').json()[0]['total_codes']==2
 
 
+def test_qr_and_short_link_collections_are_isolated_and_clicks_are_saved(client,member):
+    qr=client.post('/api/codes',json={'name':'QR only','content':{'url':'https://example.com/qr'}}).json()
+    static=client.post('/api/codes',json={'name':'Static QR','kind':'text','mode':'static','content':{'text':'Hello'}}).json()
+    link=client.post('/api/codes',json={'name':'Short link only','kind':'url','mode':'short','alias':'link-collection-test','content':{'url':'https://example.com/destination'}}).json()
+    barcode=client.post('/api/codes',json={'name':'Barcode only','kind':'barcode','mode':'static','content':{'format':'code128','value':'TURA-001'}}).json()
+    assert client.get('/api/codes?mode=qr').json()['total']==2
+    assert {row['id'] for row in client.get('/api/codes?mode=qr').json()['items']}=={qr['id'],static['id']}
+    assert {row['id'] for row in client.get('/api/codes?mode=short').json()['items']}=={link['id']}
+    assert {row['id'] for row in client.get('/api/codes?kind=barcode').json()['items']}=={barcode['id']}
+    assert all(item['project_id']==qr['project_id'] for item in (static,link,barcode))
+
+    visit=client.get('/r/'+link['slug'],follow_redirects=False)
+    assert visit.status_code==302 and visit.headers['location']=='https://example.com/destination'
+    saved=client.get('/api/codes/'+link['id']).json()
+    assert saved['total_events']==1
+    activity=client.get('/api/analytics?code_id='+link['id']).json()
+    assert activity['total']==1 and activity['clicks']==1 and activity['scans']==0
+    assert activity['recent'][0]['code_id']==link['id'] and activity['recent'][0]['channel']=='link'
+
+
 @pytest.mark.parametrize('color',['#fef08a','#ffffff','#22d3ee','#000000','#ec4899'])
 def test_business_cards_allow_all_brand_colors_with_scannable_qr(client,member,color):
     c=client.post('/api/cards',json={'name':'Brand Colors','color':color}).json()

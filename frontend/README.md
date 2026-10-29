@@ -24,7 +24,7 @@ This checks TypeScript and produces `dist`. Serve it with an SPA fallback and pr
 
 Public: `/`, `/barcode-generator`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/terms`, `/privacy`.
 
-Workspace: `/app`, `/app/codes`, `/app/create`, `/app/links`, `/app/links/new`, `/app/barcodes`, `/app/barcodes/new`, `/app/codes/:id`, `/app/analytics`, `/app/projects`, `/app/business-cards`, `/app/bulk`, `/app/settings`. Temporary-password accounts go to `/change-password` before entering their workspace.
+Workspace: `/app`, `/app/codes` (QR codes only), `/app/create`, `/app/links` (short links only), `/app/links/new`, `/app/barcodes`, `/app/barcodes/new`, `/app/codes/:id`, `/app/analytics`, `/app/projects`, `/app/business-cards`, `/app/bulk`, `/app/settings`. Link click counts open their filtered activity history. Temporary-password accounts go to `/change-password` before entering their workspace.
 
 ## Browser tests
 

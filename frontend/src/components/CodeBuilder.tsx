@@ -30,7 +30,7 @@ export default function CodeBuilder({guest=false,initial,onSaved,linkOnly=false}
  async function save(e:FormEvent){e.preventDefault();if(guest){await downloadPreview();return;}setBusy(true);setError('');setSuccess('');try{
   const controls=mode==='static'?{}:{expires_at:expiry?new Date(expiry).toISOString():null,mobile_url:mobile||null,...(!initial||changeAccess?{password:password||null}:{})};
   const result=initial?await patch<Code>('/api/codes/'+initial.id,{name,design,project_id:projectId||null,is_active:active,...(mode!=='static'?{content,...controls}:{})}):await post<Code>('/api/codes',{name,kind,mode,content,design,project_id:projectId||null,...(mode!=='static'?{...controls,alias:alias||null}:{})});
-  if(onSaved){onSaved(result);setSuccess('Your changes have been saved.');}else navigate('/app/codes/'+result.id,{state:{created:true}});
+  if(onSaved){onSaved(result);setSuccess('Your changes have been saved.');}else navigate((result.mode==='short'?'/app/links/':'/app/codes/')+result.id,{state:{created:true}});
  }catch(e){setError(message(e));}finally{setBusy(false);}}
  async function uploadLogo(file?:File){if(!file)return;setError('');if(file.size>500000){setError('Choose a PNG, JPG, or WebP logo smaller than 500 KB.');return;}const reader=new FileReader();reader.onload=()=>setDesign(d=>({...d,logo:String(reader.result)}));reader.readAsDataURL(file);}
  return <form className={'builder '+(guest?'guest-builder':'')} onSubmit={save}>

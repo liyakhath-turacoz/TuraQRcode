@@ -62,11 +62,12 @@ def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|s
 
 
 @router.get('/api/codes')
-def list_codes(q:str=Query('',max_length=120),kind:str=Query('',max_length=20),mode:str=Query('',pattern='^(static|dynamic|short)?$'),status:str=Query('',pattern='^(active|paused|expired)?$'),project_id:str=Query('',max_length=36),sort:str=Query('newest',pattern='^(newest|oldest|name)$'),page:int=Query(1,ge=1),limit:int=Query(20,ge=1,le=100),user:User=Depends(ready_user),db:Session=Depends(get_db)):
+def list_codes(q:str=Query('',max_length=120),kind:str=Query('',max_length=20),mode:str=Query('',pattern='^(static|dynamic|short|qr)?$'),status:str=Query('',pattern='^(active|paused|expired)?$'),project_id:str=Query('',max_length=36),sort:str=Query('newest',pattern='^(newest|oldest|name)$'),page:int=Query(1,ge=1),limit:int=Query(20,ge=1,le=100),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     query=select(Code).where(Code.user_id==user.id)
     if q: query=query.where(Code.name.ilike('%'+q+'%'))
     if kind: query=query.where(Code.kind==kind)
-    if mode: query=query.where(Code.mode==mode)
+    if mode=='qr': query=query.where(Code.mode!='short',Code.kind!='barcode')
+    elif mode: query=query.where(Code.mode==mode)
     if project_id: query=query.where(Code.project_id==project_id)
     if status=='active': query=query.where(Code.is_active.is_(True), (Code.expires_at.is_(None)) | (Code.expires_at > now()))
     if status=='paused': query=query.where(Code.is_active.is_(False))

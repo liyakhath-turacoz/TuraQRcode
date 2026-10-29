@@ -193,13 +193,13 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Design | Dark foreground/light background with contrast checks; classic, rounded, or dot pattern; optional “Scan me” frame; raster PNG/JPG/WebP logo, maximum 500 KB and 4 megapixels |
 | Barcodes | Public generator and saved-code management for Code 128, Code 39, EAN-13, EAN-8, UPC-A; checksum calculation/verification for EAN/UPC; optional value caption; contrasting colors; PNG/SVG/PDF and saved bundle/print exports |
 | Exports | PNG (256–2048 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
-| Short links | Dedicated creation/listing pages, optional UTM source/medium/campaign builder, generated or custom alias; custom aliases use 3–64 letters, numbers, hyphens, or underscores and must be globally unique |
+| Short links | The Links workspace lists short links only; it has its own create flow, destination, optional UTM tags, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
 | Editable destinations | Update a managed URL without changing its short address or QR payload |
 | Link controls | Pause/reactivate, optional expiry, optional access password, optional alternate mobile destination |
-| Saved codes | List, search by name, filter by content type/mode/status/project, sort by name/newest/oldest, paginate, edit, delete, select for export |
+| Saved codes | QR, Links, and Barcodes each have separate saved lists. The QR list excludes short links and barcodes; the Links list includes short links only. Search, relevant filters, project selection, sort, pagination, edit, delete, and export are available |
 | Overview | Code/active-code counts, clicks/scans, 14-day activity, top connections, devices, recent codes, quick-create shortcuts |
-| Analytics | Code/date-range filters; request totals, link clicks, QR scans, UTC daily trends, device categories, referrer hosts, latest 25 requests, CSV export up to 50,000 rows |
-| Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Existing unassigned codes are migrated. Rename/color projects; deletion moves codes to the default project, which cannot be deleted |
+| Analytics | Each trackable redirect is saved against its code with time, link-click or QR-scan channel, device category, and referrer host. Per-link activity is opened from its click count; reporting includes date filters, UTC daily trends, latest 25 requests, and CSV export up to 50,000 rows |
+| Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Project cards link to separate QR, Links, and Barcodes lists. Existing unassigned codes are migrated. Rename/color projects; deletion moves items to the default project, which cannot be deleted |
 | Business cards | Name, title, company, email, phone, one website/social-profile URL, any custom card color with automatic readable text and a contrasting exported QR; create/edit/delete, public profile, vCard download, QR export, copy address |
 | Bulk UI | CSV upload or paste, column mapping, URL or text batches, editable/static/short-link selection as applicable, row-level results, ZIP/print export; maximum 100 rows and 100 KB CSV input |
 | Bulk API | Up to 100 supported code objects per request; validation and alias conflicts reported per row while valid rows are saved |
@@ -214,6 +214,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 
 - Static QR content is fixed. Static scans are not tracked; pausing or deleting a saved static record cannot disable an already downloaded code.
 - Editable codes and short links depend on the running service, active account/link, and public hostname. Set that hostname before distributing codes; changing configuration cannot rewrite printed images.
+- A short link’s current destination and settings are saved in PostgreSQL. Its visit events are retained as activity history and removed with the link. Editing a destination replaces the current destination; prior destination revisions are not retained.
 - Analytics count requests, including repeats and bots. They do not claim unique people, precise geolocation, or verified human scans. Referrers/devices can be incomplete.
 - Profile email changes and self-service account deletion are not implemented. Account recovery is available through SMTP when configured or through the administrator-assisted workflow.
 - There is no billing/subscription UI, file/media QR hosting, GS1, integration marketplace, per-account custom-domain provisioning, or multi-social-link business-card editor in this release.
@@ -221,7 +222,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 
 ## Complete page inventory
 
-### Customer app — 17 routes
+### Customer app — 23 routes
 
 | Route | Page | Access |
 |---|---|---|
@@ -235,10 +236,11 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | `/privacy` | Privacy Policy | Public |
 | `/change-password` | Initial/explicit password change | Signed-in account |
 | `/app` | Overview/dashboard | Signed-in account with password requirement satisfied |
-| `/app/codes` | Saved links and QR codes | Signed-in owner |
+| `/app/codes` | Saved QR codes | Signed-in owner |
 | `/app/create` | Create QR code/short link | Signed-in account |
-| `/app/links` | Saved short links | Signed-in owner |
+| `/app/links` | Short links only, with click-count links to per-link activity | Signed-in owner |
 | `/app/links/new` | Short-link creator, UTM tags, link controls | Signed-in account |
+| `/app/links/:id` | Short-link details, destination editor, and activity | Owner |
 | `/app/barcodes` | Saved barcodes | Signed-in owner |
 | `/app/barcodes/new` | Barcode creator | Signed-in account |
 | `/app/codes/:id` | Code details and editor | Owner |
