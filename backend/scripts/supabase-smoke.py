@@ -73,18 +73,20 @@ def run():
             assert label['content']['value']=='5901234123457'
             assert client.get('/api/codes/'+label['id']+'/download').content.startswith(b'\x89PNG')
             print('PASS live password unlock and barcode persistence/export')
-            image=io.BytesIO();Image.new('RGB',(40,40),'#2563eb').save(image,'PNG')
+            image=io.BytesIO();Image.new('RGB',(640,360),'#2563eb').save(image,'PNG')
             media='data:image/png;base64,'+base64.b64encode(image.getvalue()).decode()
             card_response=client.post('/api/cards',json={'name':'Temporary professional card','profile_image':media,'cover_image':media,'company_logo':media,
                 'experience':[{'role':'Temporary reviewer','organization':'Test organization','period':'2026'}],
-                'social_links':[{'platform':'linkedin','url':'https://linkedin.com/in/example'}]})
+                'bio_html':'<p><strong>Professional</strong> profile</p>', 'social_links':[{'platform':'linkedin','url':'company/turacoz'}]})
             assert card_response.status_code==201
             card=card_response.json()
             assert client.get('/api/cards').json()[0]['profile_image'].startswith('data:image/webp;base64,')
             assert 'Temporary reviewer' in client.get('/c/'+card['slug']).text
+            assert '<strong>Professional</strong>' in client.get('/c/'+card['slug']).text
+            assert card['bio']=='Professional profile' and card['social_links'][0]['url']=='https://www.linkedin.com/company/turacoz'
             assert client.delete('/api/codes/'+card['qr_code_id']).status_code==204
             assert client.get('/api/cards').json()==[] and client.get('/c/'+card['slug']).status_code==404
-            print('PASS live card images, experience/social persistence and linked deletion')
+            print('PASS live card images, safe rich text, normalized social handles and linked deletion')
             tracked=client.post('/api/codes',json={'name':'Temporary tracked barcode','kind':'barcode','mode':'dynamic',
                 'content':{'format':'code128','value':'https://example.com/'+('long-destination-'*10),'tracked':True}})
             assert tracked.status_code==201

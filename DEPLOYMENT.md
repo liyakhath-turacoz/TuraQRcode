@@ -253,7 +253,7 @@ Replace the site's existing catch-all `location /` with the appropriate fragment
 Use [frontend.locations.conf](backend/deploy/cloudpanel/frontend.locations.conf):
 
 ```nginx
-client_max_body_size 2m;
+client_max_body_size 3m;
 
 location ^~ /api/ {
     proxy_pass http://127.0.0.1:8000;
@@ -295,7 +295,7 @@ Keep the prefixes exactly `/api/`, `/r/`, and `/c/`: using `/r` would also match
 Use [admin.locations.conf](backend/deploy/cloudpanel/admin.locations.conf):
 
 ```nginx
-client_max_body_size 2m;
+client_max_body_size 3m;
 location ^~ /api/ {
     proxy_pass http://127.0.0.1:8000;
     proxy_http_version 1.1;
@@ -504,9 +504,15 @@ The server supplies the updated Content Security Policy for protected-link forms
 
 ## Updating square exports and professional business cards
 
-After pulling this release, install the updated `backend/requirements.txt` using the service's Python environment. `resvg-py` supplies Windows/Linux wheels for the SVG-to-PNG renderer; no Cairo service is required. ReportLab's bundled fonts keep label metrics consistent between preview and download. Rebuild the customer frontend, run `python -m app.manage migrate`, then restart FastAPI. The new `20261029_card_media` migration adds profile/cover/logo image fields and JSON experience/social fields without removing existing cards.
+After pulling this release, install the updated `backend/requirements.txt` using the service's Python environment. `resvg-py` supplies Windows/Linux wheels for the SVG-to-PNG renderer; no Cairo service is required. ReportLab's bundled fonts keep label metrics consistent between preview and download. `nh3` sanitizes public profile formatting. Rebuild the customer frontend after `npm ci`, run `python -m app.manage migrate`, then restart FastAPI. The `20261029_card_media` migration adds profile/cover/logo image fields and JSON experience/social fields; `20261029_card_rich_text` adds `bio_html` with an empty default. Both preserve existing cards and plain-text content.
 
-Card uploads are compressed in the browser and bounded again server-side. Keep the existing Nginx `client_max_body_size 2m` setting; card records (including images) live in PostgreSQL and are included in the normal database backup. Keep page/API caching disabled for `/c/` so profile changes and deletions take effect promptly.
+The inline business-card toolbar is bundled in a separate customer-app chunk; deploy all files from `frontend/dist/assets`, including the generated `Organization-*.js`. The backend's `app/profile.css` belongs in the private source checkout and is embedded into published card pages. Do not deploy only `.py` files. No third-party editor service or API key is required.
+
+Image uploads accept PNG/JPG/WebP up to 8 MB in the browser and are prepared before submission. Portraits save at 512 × 512 px and covers at 1,280 × 720 px; logos preserve their proportions inside a 512 px canvas. Use a 3 MB proxy request limit to accommodate three prepared images and formatted profile sections. The API allows up to 3 MB for card writes and 2 MB for other requests. The API validates the smaller submitted images (500 KB, four megapixels) and their minimum dimensions. See the root README for the full image table and crop behavior.
+
+The five-row bulk example is a static asset at `/examples/bulk-5.csv`. Copy it with the rest of `frontend/dist`; it does not require a database seed. Social-handle normalization is server-side and uses the platform's public URL structure. No YouTube, Meta, or LinkedIn API credentials are needed.
+
+Card uploads are compressed in the browser and bounded again server-side. Set the Nginx `client_max_body_size 3m` setting; card records (including images) live in PostgreSQL and are included in the normal database backup. Keep page/API caching disabled for `/c/` so profile changes and deletions take effect promptly.
 
 Verify after updating: download the same labeled QR at 354 and 1,200 px and inspect the actual file dimensions; ordinary PDF pages must also have different square physical dimensions. A4 is an explicit paper layout. Create a card with images, experience and a social profile, check its public page, then delete the linked QR and confirm both records are removed. Generate and edit a tracked Code 128 barcode with a long destination; its preview and downloaded image must remain readable.
 

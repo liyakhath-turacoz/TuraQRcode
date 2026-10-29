@@ -1,8 +1,9 @@
 import base64
+import binascii
 import io
 from urllib.parse import quote, urlencode
 import qrcode
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 def normalize_logo(value):
@@ -28,15 +29,34 @@ def vescape(s):
     return str(s).replace('\\','\\\\').replace('\r','').replace('\n',r'\n').replace(';',r'\;').replace(',',r'\,')
 
 
-def normalize_card_image(value):
-    verified=normalize_logo(value)
-    with Image.open(io.BytesIO(base64.b64decode(verified.split(',',1)[1]))) as image:
-        for quality in (85,65,45):
-            output=io.BytesIO()
-            image.save(output,'WEBP',quality=quality)
-            if output.tell()<=450000:
-                return 'data:image/webp;base64,'+base64.b64encode(output.getvalue()).decode()
-    raise ValueError('Choose a smaller profile image.')
+def normalize_card_image(value, field='profile_image'):
+    specs={'profile_image':((128,128),(512,512)), 'cover_image':((320,180),(1280,720)), 'company_logo':((64,64),(512,512))}
+    minimum,target=specs[field]
+    try:
+        if not value.startswith(('data:image/png;base64,','data:image/jpeg;base64,','data:image/webp;base64,')):
+            raise ValueError('Choose a PNG, JPG, or WebP image.')
+        raw=base64.b64decode(value.split(',',1)[1],validate=True)
+        if len(raw)>500000:
+            raise ValueError('Prepare an image smaller than 500 KB before saving.')
+        with Image.open(io.BytesIO(raw)) as original:
+            if original.format not in ('PNG','JPEG','WEBP') or original.width*original.height>4_000_000:
+                raise ValueError('Choose a PNG, JPG, or WebP image smaller than 4 megapixels.')
+            original.load()
+            image=ImageOps.exif_transpose(original).convert('RGBA')
+            if image.width<minimum[0] or image.height<minimum[1]:
+                raise ValueError(f'Use an image at least {minimum[0]} × {minimum[1]} pixels.')
+            if field=='company_logo':
+                image.thumbnail(target,Image.Resampling.LANCZOS)
+            else:
+                image=ImageOps.fit(image,target,method=Image.Resampling.LANCZOS)
+            for quality in (88,75,60):
+                output=io.BytesIO()
+                image.save(output,'WEBP',quality=quality)
+                if output.tell()<=450000:
+                    return 'data:image/webp;base64,'+base64.b64encode(output.getvalue()).decode()
+        raise ValueError('This image is too detailed. Choose a smaller image.')
+    except (binascii.Error,OSError,UnidentifiedImageError,Image.DecompressionBombError):
+        raise ValueError('This image could not be opened. Choose a PNG, JPG, or WebP image.') from None
 
 
 def vcard(c):

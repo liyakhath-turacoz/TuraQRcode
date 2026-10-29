@@ -293,8 +293,8 @@ def analytics_export(days:int=Query(30,ge=1,le=365),code_id:str|None=None,projec
     return Response(out.getvalue(),media_type='text/csv',headers={'Content-Disposition':'attachment; filename="turaqrcode-activity.csv"'})
 
 
-def html_page(title,body):
-    return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+' · TuraQRcode</title><style>body{font:16px system-ui;background:#f3f6fc;color:#163b75;margin:0;padding:40px 20px}main{max-width:420px;margin:8vh auto;background:white;padding:36px;border:1px solid #dce5f3;border-radius:20px}label{display:block;margin:20px 0 8px}input,button{box-sizing:border-box;width:100%;padding:14px;font:inherit;border:1px solid #afc1db;border-radius:8px}button,a.action{background:#2563eb;color:white;border:0;margin-top:16px;cursor:pointer}a{color:#2563eb}small{display:block;color:#52657e;margin-top:28px}</style><main>'+body+'<small>TuraQRcode by Turacoz</small></main></html>'
+def html_page(title,body,brand=True):
+    return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+' · TuraQRcode</title><style>body{font:16px system-ui;background:#f3f6fc;color:#163b75;margin:0;padding:40px 20px}main{max-width:420px;margin:8vh auto;background:white;padding:36px;border:1px solid #dce5f3;border-radius:20px}label{display:block;margin:20px 0 8px}input,button{box-sizing:border-box;width:100%;padding:14px;font:inherit;border:1px solid #afc1db;border-radius:8px}button,a.action{background:#2563eb;color:white;border:0;margin-top:16px;cursor:pointer}a{color:#2563eb}small{display:block;color:#52657e;margin-top:28px}</style><main>'+body+('<small>TuraQRcode by Turacoz</small>' if brand else '')+'</main></html>'
 
 
 def public_code(db,slug):

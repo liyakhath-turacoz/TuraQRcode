@@ -1,5 +1,7 @@
 import secrets
 from html import escape
+from pathlib import Path
+from .rich_text import profile_text
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse
@@ -49,7 +51,7 @@ def ensure_card_qr(db,card,user_id):
 
 def card_json(card):
     return {
-        **{key:getattr(card,key) for key in ('id','slug','name','title','company','email','phone','website','bio','address','links','sections','experience','social_links','profile_image','cover_image','company_logo','color','background_end','background_angle','text_color','accent_color','qr_code_id','created_at')},
+        **{key:getattr(card,key) for key in ('id','slug','name','title','company','email','phone','website','bio','bio_html','address','links','sections','experience','social_links','profile_image','cover_image','company_logo','color','background_end','background_angle','text_color','accent_color','qr_code_id','created_at')},
         'public_url':public_url(card),
     }
 
@@ -127,10 +129,10 @@ def public_profile(slug:str,db:Session=Depends(get_db)):
     card_background=f'linear-gradient({int(card.background_angle or 135)}deg, {card.color}, {card.background_end})' if card.background_end else card.color
     initials=''.join(part[0] for part in card.name.split()[:2]).upper()
     links=''.join(f'<a class="profile-link" href="{e(link["url"])}" target="_blank" rel="noopener noreferrer"><span>{e(link["label"])}</span><span aria-hidden="true">↗</span></a>' for link in card.links or [])
-    sections=''.join(f'<section class="profile-panel"><h2>{e(section.get("title"))}</h2><p class="profile-bio">{e(section.get("body"))}</p></section>' for section in card.sections or [])
+    sections=''.join(f'<section class="profile-section"><h2>{e(section.get("title"))}</h2><div class="profile-rich">{profile_text(section.get("body"),section.get("body_html"))}</div></section>' for section in card.sections or [])
     platform_names={'linkedin':'LinkedIn','instagram':'Instagram','facebook':'Facebook','x':'X','youtube':'YouTube','tiktok':'TikTok','github':'GitHub','pinterest':'Pinterest','whatsapp':'WhatsApp','telegram':'Telegram'}
     social=''.join(f'<a class="profile-link" href="{e(item["url"])}" target="_blank" rel="noopener noreferrer">{e(platform_names.get(item["platform"],item["platform"]))}<span aria-hidden="true">↗</span></a>' for item in card.social_links or [])
-    experience=''.join(f'<article class="profile-experience"><h3>{e(item["role"])}</h3><p>{e(item.get("organization"))}</p><small>{e(item.get("period"))}</small><p class="profile-bio">{e(item.get("description"))}</p></article>' for item in card.experience or [])
+    experience=''.join(f'<article class="profile-experience"><h3>{e(item["role"])}</h3><p class="organization">{e(item.get("organization"))}</p><small>{e(item.get("period"))}</small><div class="profile-rich">{profile_text(item.get("description"),item.get("description_html"))}</div></article>' for item in card.experience or [])
     avatar=f'<img src="{e(card.profile_image)}" alt="{e(card.name)}"/>' if card.profile_image else e(initials)
     cover=f'<img class="profile-cover" src="{e(card.cover_image)}" alt="Profile cover"/>' if card.cover_image else ''
     logo=f'<img class="profile-company-logo" src="{e(card.company_logo)}" alt="{e(card.company or "Company")} logo"/>' if card.company_logo else ''
@@ -144,32 +146,22 @@ def public_profile(slug:str,db:Session=Depends(get_db)):
     if card.address:
         contacts.append(f'<div class="contact-link"><span class="contact-icon">⌖</span><span><small>LOCATION</small>{e(card.address)}</span></div>')
     role=' · '.join(value for value in (card.title,card.company) if value)
-    profile_css='''
-      body{background:linear-gradient(155deg,#edf4ff 0%,#f7f9fd 45%,#eef2f8 100%);color:#152b49;padding:24px 16px}
-      main{box-sizing:border-box;max-width:760px;margin:2vh auto;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none}
-      .profile-shell{display:grid;gap:14px}.profile-brand{display:flex;align-items:center;justify-content:space-between;padding:8px 6px 14px;color:#536780;font-size:11px;font-weight:700;letter-spacing:.12em}
-      .profile-brand span:last-child{font-weight:500;letter-spacing:0}.profile-hero{--hero-accent:VAR_HERO_ACCENT;position:relative;overflow:hidden;padding:30px;border-radius:20px;background:VAR_BACKGROUND;color:VAR_INK;box-shadow:0 18px 45px #10294e1c}
-      .profile-hero:after{content:"";position:absolute;width:250px;height:250px;right:-90px;top:-130px;border:1px solid currentColor;border-radius:50%;opacity:.11;box-shadow:0 0 0 25px #ffffff0b,0 0 0 55px #ffffff09}
-      .profile-avatar{display:grid;width:64px;height:64px;place-items:center;border:1px solid var(--hero-accent);border-radius:20px;background:#ffffff24;font-size:20px;font-weight:800}
-      .profile-kicker{margin:23px 0 8px;font-size:10px;font-weight:700;letter-spacing:.16em;opacity:1}.profile-hero h1{margin:0;font-size:clamp(28px,6vw,42px);line-height:1.1;letter-spacing:-.045em}.profile-role{margin:10px 0 0;font-size:15px;opacity:1}
-      .profile-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}.profile-action{display:inline-flex;min-height:42px;align-items:center;justify-content:center;gap:8px;padding:10px 15px;border:1px solid #ffffff50;border-radius:10px;background:#ffffff20;color:inherit;text-decoration:none;font-size:12px;font-weight:700}
-      .profile-action.primary{border-color:#fff;background:#fff;color:#173c72}.profile-panels{display:grid;grid-template-columns:1fr 1fr;gap:14px}.profile-panel{min-width:0;padding:20px;border:1px solid #dfe7f1;border-radius:16px;background:#fff;box-shadow:0 7px 20px #16375c08}
-      .profile-panel h2{margin:0 0 15px;color:#1a3455;font-size:17px;letter-spacing:-.02em}.profile-bio{margin:0;color:#52657d;font-size:14px;line-height:1.8;white-space:pre-line}
-      .contact-list{display:grid;gap:9px}.contact-link{display:flex;min-width:0;align-items:center;gap:11px;padding:10px;border:1px solid #e6ecf4;border-radius:10px;color:#234367;text-decoration:none;overflow-wrap:anywhere;font-size:12px}
-      .contact-link small{display:block;margin:0 0 3px;color:#536780;font-size:9px;letter-spacing:.1em}.contact-icon{display:grid;flex:0 0 auto;width:34px;height:34px;place-items:center;border-radius:10px;background:#eff5ff;color:VAR_ACCENT;font-size:17px}
-      .profile-links{display:grid;gap:8px}.profile-link{display:flex;min-height:46px;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid #dfe7f1;border-radius:10px;background:#f9fbfe;color:VAR_ACCENT;text-decoration:none;font-size:12px;font-weight:650}.profile-link:hover{border-color:#adc7ec;background:#f1f6ff}
-      .profile-footer{padding:10px;color:#465b76;text-align:center;font-size:11px}.profile-footer a{color:VAR_ACCENT}
-      .profile-avatar{overflow:hidden;width:88px;height:88px}.profile-avatar img{width:100%;height:100%;object-fit:cover}.profile-identity{display:flex;align-items:center;justify-content:space-between;gap:20px;position:relative;z-index:1}.profile-cover{display:block;width:calc(100% + 60px);max-width:none;height:200px;object-fit:cover;margin:-30px -30px 24px}.profile-company-logo{max-width:110px;max-height:65px;object-fit:contain;padding:8px;border-radius:12px;background:white}.profile-experience{padding:0 0 16px 15px;margin-top:18px;border-left:2px solid #dbeafe}.profile-experience h3{font-size:15px;margin:0 0 5px}.profile-experience p{margin:5px 0;color:#52657d}.profile-experience small{color:#536780}.profile-wide{grid-column:1/-1}
-      @media(max-width:620px){body{padding:12px}.profile-hero{padding:23px;border-radius:16px}.profile-panels{grid-template-columns:1fr}.profile-panel{padding:17px}.profile-brand{padding-inline:3px}}
-    '''.replace('VAR_BACKGROUND',e(card_background)).replace('VAR_INK',e(ink)).replace('VAR_HERO_ACCENT',e(accent)).replace('VAR_ACCENT',e(panel_accent))
-    body=f'''<style>{profile_css}</style><div class="profile-shell"><div class="profile-brand"><span>DIGITAL BUSINESS CARD</span><span>Turacoz · TuraQRcode</span></div>
-      <header class="profile-hero">{cover}<div class="profile-identity"><div class="profile-avatar">{avatar}</div>{logo}</div><p class="profile-kicker">LET’S CONNECT</p><h1>{e(card.name)}</h1>{f'<p class="profile-role">{e(role)}</p>' if role else ''}
-      <div class="profile-actions"><a class="profile-action primary" href="/c/{e(card.slug)}/contact.vcf">Save contact</a>{f'<a class="profile-action" href="mailto:{e(card.email)}">Send an email</a>' if card.email else ''}</div></header>
-      <div class="profile-panels">{f'<section class="profile-panel"><h2>About</h2><p class="profile-bio">{e(card.bio)}</p></section>' if card.bio else ''}
-      {f'<section class="profile-panel"><h2>Contact & location</h2><div class="contact-list">{"".join(contacts)}</div></section>' if contacts else ''}
-       {f'<section class="profile-panel profile-wide"><h2>Professional experience</h2>{experience}</section>' if experience else ''}{sections}{f'<section class="profile-panel"><h2>Social profiles</h2><div class="profile-links">{social}</div></section>' if social else ''}{f'<section class="profile-panel"><h2>Showcase your work</h2><div class="profile-links">{links}</div></section>' if links else ''}</div>
-      <div class="profile-footer">Shared with care · <a href="/c/{e(card.slug)}/contact.vcf">Save this contact</a></div></div>'''
-    return html_page(card.name,body)
+    profile_css=Path(__file__).with_name('profile.css').read_text(encoding='utf-8').replace('VAR_BACKGROUND',e(card_background)).replace('VAR_INK',e(ink)).replace('VAR_HERO_ACCENT',e(accent)).replace('VAR_ACCENT',e(panel_accent))
+    about=f'<section class="profile-section"><h2>About</h2><div class="profile-rich">{profile_text(card.bio,card.bio_html)}</div></section>' if card.bio else ''
+    work=f'<section class="profile-section"><h2>Professional experience</h2>{experience}</section>' if experience else ''
+    work_links=f'<section class="profile-section"><h2>Selected links</h2><div class="profile-links">{links}</div></section>' if links else ''
+    contact_section=f'<section class="profile-section"><h2>Get in touch</h2><div class="contact-list">{"".join(contacts)}</div></section>' if contacts else ''
+    social_section=f'<section class="profile-section"><h2>Find me online</h2><div class="profile-links">{social}</div></section>' if social else ''
+    story=about+work+sections+work_links
+    aside=f'<aside class="profile-aside" aria-label="Contact and social profiles">{contact_section}{social_section}</aside>' if contact_section or social_section else ''
+    content=f'<div class="profile-body {"" if story and aside else "single-column"}">{f"<div class=profile-story>{story}</div>" if story else ""}{aside}</div>' if story or aside else ''
+    body=f'''<style>{profile_css}</style><div class="profile-shell">
+      <div class="profile-banner {'cover-present' if card.cover_image else ''}">{cover}<span class="profile-brand">DIGITAL BUSINESS CARD<br>Turacoz · TuraQRcode</span>{logo}</div>
+      <header class="profile-intro"><div class="profile-avatar">{avatar}</div><div class="profile-heading"><div><h1>{e(card.name)}</h1>{f'<p class="profile-role">{e(role)}</p>' if role else ''}</div>
+      <div class="profile-actions"><a class="profile-action primary" href="/c/{e(card.slug)}/contact.vcf">Save contact</a>{f'<a class="profile-action" href="mailto:{e(card.email)}">Send an email</a>' if card.email else ''}</div></div></header>
+      {content}
+      <footer class="profile-footer"><span>TuraQRcode by Turacoz</span><a href="/c/{e(card.slug)}/contact.vcf">Save this contact</a></footer></div>'''
+    return html_page(card.name,body,brand=False)
 
 
 @router.get('/c/{slug}/contact.vcf')

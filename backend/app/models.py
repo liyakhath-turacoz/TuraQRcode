@@ -88,6 +88,7 @@ class BusinessCard(Base):
     phone: Mapped[str] = mapped_column(String(30), default='')
     website: Mapped[str] = mapped_column(Text, default='')
     bio: Mapped[str] = mapped_column(Text, default='')
+    bio_html: Mapped[str] = mapped_column(Text, default='')
     address: Mapped[str] = mapped_column(String(300), default='')
     links: Mapped[list] = mapped_column(JSON, default=list)
     sections: Mapped[list] = mapped_column(JSON, default=list)

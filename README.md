@@ -116,6 +116,9 @@ TuraQRcode/
 │   │   ├── routes_codes.py          Codes, redirects, analytics, projects, bulk/exports
 │   │   ├── qr_render.py             Square vector composition and high-resolution exports
 │   │   ├── routes_cards.py          Business cards and public contact pages
+│   │   ├── profile.css              Responsive published business-card layout
+│   │   ├── rich_text.py             Profile formatting sanitization and plain text
+│   │   ├── social.py                Handle and social-platform URL normalization
 │   │   ├── routes_admin.py          Administrator operations and audit history
 │   │   └── manage.py                Check, migrate, initialize, Supabase checks
 │   ├── migrations/
@@ -145,16 +148,20 @@ TuraQRcode/
 │   ├── vite.config.ts               Development API/redirect/card proxy
 │   ├── tsconfig.json
 │   ├── public/favicon.svg
+│   ├── public/examples/bulk-5.csv    Five-row bulk test/download example
 │   ├── src/
 │   │   ├── main.tsx                 Customer routes and application startup
 │   │   ├── styles.css
+│   │   ├── card-editor.css           Inline text/image tools and card preview
 │   │   ├── accessibility.css
 │   │   ├── shared/                  This app's API, account, UI, type/style primitives
-│   │   ├── components/              Layout, QR/barcode builders, safe colors, link previews, charts
+│   │   ├── components/              Layout, QR/barcode builders, rich text, image crops, exports, charts
 │   │   └── pages/                   Public/legal, codes, organization, bulk, settings
 │   ├── design-system/turaqrcode/     Visual guidance and product reference plan
 │   ├── playwright.config.ts
 │   ├── tests/e2e/product.spec.ts     Complete customer/administrator browser scenarios
+│   ├── tests/e2e/card-editor.spec.ts Inline writing/crop, public profile, social handles, five-row CSV
+│   ├── tests/e2e/export-media.spec.ts Square exports, media persistence, barcode editing, scrolling
 │   ├── tests/screenshots/           Representative verified interface screenshots
 │   ├── Dockerfile
 │   ├── nginx.conf                   Optional container Nginx configuration
@@ -193,7 +200,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | QR modes | Static QR codes for all supported content types; editable, trackable website, form, app, file, and supported social URL QR codes plus short links; trackable Code 128 barcodes that open a website; fixed-value retail and inventory barcodes |
 | Design | Seven module patterns, independent corner-frame and center styles, 198 contrast-checked color combinations including multi-stop linear/radial gradients for QR ink, background, or both; separate marker colors; independently styled labels positioned between the QR clear margin and canvas edge, callout/border frames, and raster PNG/JPG/WebP logo up to 500 KB and 4 megapixels |
 | Barcodes | Separate saved barcode history; Code 128, Code 39, EAN-13, EAN-8, UPC-A; EAN/UPC check digits; optional value caption; high-contrast color presets and custom colors; adjustable bar width, height, and caption size; PNG/SVG/PDF and saved bundle/print exports. Track scan requests with managed Code 128 website links. |
-| Exports | PNG (256–2048 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
+| Exports | PNG (256–4096 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
 | Short links | The Links workspace lists short links only; it has its own create flow, destination, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
 | Editable destinations | Update a managed URL without changing its short address or QR payload |
 | Link controls | Pause/reactivate, optional expiry, optional access password, optional alternate mobile destination |
@@ -201,8 +208,8 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Overview | Code/active-code counts, clicks/scans, 14-day activity, top connections, devices, recent codes, quick-create shortcuts |
 | Analytics | Each trackable redirect is saved against its code with time, link-click or QR-scan channel, device category, and referrer host. Per-link activity is opened from its click count; reporting includes date filters, UTC daily trends, latest 25 requests, and CSV export up to 50,000 rows |
 | Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Project cards link to separate QR, Links, and Barcodes lists. Existing unassigned codes are migrated. Rename/color projects; deletion moves items to the default project, which cannot be deleted |
-| Business cards | Name, title, company, email, phone, website, portfolio links, ten social platforms, up to twelve work-experience entries, ten custom professional sections, profile photo, cover image, company logo, coordinated themes, readable text and a contrasting exported QR; full-page live editor, public profile, vCard download, QR export, copy address; deleting its linked QR also removes the card |
-| Bulk UI | CSV upload or paste, column mapping, URL or text batches, editable/static/short-link selection as applicable, row-level results, ZIP/print export; maximum 100 rows and 100 KB CSV input |
+| Business cards | Name, title, company, email, phone, website, portfolio links, ten social platforms, up to twelve work-experience entries, ten custom professional sections, profile photo, cover image, company logo, coordinated themes, readable text and a contrasting exported QR; inline rich-text tools for bio/experience/sections, image crop controls, full-page live editor, continuous public profile, vCard download, QR export, copy address; deleting its linked QR also removes the card |
+| Bulk UI | CSV upload or paste, column mapping, URL or text batches, editable/static/short-link selection as applicable, row-level results, ZIP/print export; downloadable five-row example, maximum 100 rows and 100 KB CSV input |
 | Bulk API | Up to 100 supported code objects per request; validation and alias conflicts reported per row while valid rows are saved |
 | Registration | Name/email/password; required combined Terms & Conditions and Privacy Policy checkbox; consent timestamp and policy version recorded |
 | Accounts | Login, logout, profile-name changes, password change, session expiry/revocation, recovery request, single-use expiring reset links |
@@ -325,7 +332,7 @@ Commit source, package manifests, `package-lock.json` files, Python requirement 
 
 After cloning or updating a server, recreate dependencies with `npm ci` and `python -m pip install -r requirements.txt`, create the private server `.env`, apply migrations, build both frontends, and restart the API. [DEPLOYMENT.md](DEPLOYMENT.md) explains exactly which values/files change, which services restart, how to publish new static builds, and how to preserve secrets during updates.
 
-## Blue design and generator update ? 29 October 2026
+## Blue design and generator update - 29 October 2026
 
 The browser suite exercises actual protected-form navigation to a different origin for desktop and mobile visitors, including wrong-password retry. Interrupted form requests are handled without an unhandled `ClientDisconnect`; successful unlocks use an HTTP 303 destination GET. The public password page permits HTTP(S) redirect destinations in its form policy while retaining other page restrictions.
 
@@ -342,3 +349,21 @@ Barcode PNG, SVG and PDF exports use the same vector composition. Width choices 
 Business-card images accept PNG, JPG and WebP up to 8 MB in the browser. Images are resized/compressed before upload and validated again on the server. Profile images, cover images and company logos are stored with the card; no public storage bucket is required. Run the latest migrations before serving the updated UI.
 
 Feature references: [QRStuff output sizes and printing](https://www.qrstuff.com/en-gb/faqs), [DENSO WAVE QR clear-margin specification](https://www.qrcode.com/en/howto/code.html/index.html), and [HiHello profile images, professional information, and social fields](https://support.hihello.com/hc/en-us/articles/13961518898971-Editing-Your-Card-on-a-Computer).
+
+## Business-card editing and social inputs
+
+Bio, experience highlights, and custom profile sections have inline tools for bold, italic, underline, strikethrough, inline code, superscript/subscript, lists, quotes, list indentation, undo/redo, and clearing formatting. No writing popup is required. The public profile preserves these formats while removing scripts, embedded content, styles, and other unsupported markup. Plain text remains available for compatibility.
+
+| Card image | Upload minimum | Saved/display canvas |
+|---|---|---|
+| Profile photo | 128 × 128 px | 512 × 512 px, square crop |
+| Cover photo | 320 × 180 px | 1,280 × 720 px, 16:9 crop |
+| Company logo | 64 × 64 px | Fits within 512 × 512 px; proportions preserved |
+
+Choose PNG, JPG, or WebP up to 8 MB, 8,000 px per side, and 30 megapixels in the editor. The editor prepares a smaller image before saving; API submissions must be under 500 KB and four megapixels. Zoom and horizontal/vertical positioning appear beside the uploaded portrait/cover. Saved images can be cropped again; re-upload the original to recover areas outside a previously saved crop. The server validates dimensions and image contents independently.
+
+YouTube, Instagram, Facebook, and LinkedIn QR fields accept an account handle, a supported platform address without `https://`, or a full profile/post URL. YouTube also accepts channel IDs and legacy channel paths; LinkedIn accepts `in/name` and `company/name`. Business-card social fields accept handles for all ten supported platforms; WhatsApp accepts a country-code phone number. A display name containing spaces is not a unique account handle, so it requires a profile URL. Account existence/privacy is controlled by the destination platform.
+
+[Download the five-row CSV](frontend/public/examples/bulk-5.csv). Upload it at **Bulk & print**, choose editable/static QR codes or short links, and leave aliases blank for repeatable tests with automatically generated addresses. Each item is assigned to the default project. The CSV contains five public website destinations and no personal details.
+
+Image-layout references: [HiHello image guidance](https://support.hihello.com/hc/en-us/articles/14639880824475-What-format-size-and-resolution-should-I-use-for-pictures-and-videos) and [Blinq image layouts](https://support.blinq.me/en/articles/68009-changing-your-card-image-layout). The limits above are TuraQRcode's own product choices. [YouTube's channel URL guide](https://support.google.com/youtube/answer/6180214) explains handles and channel IDs.

@@ -95,7 +95,8 @@ def render(data, design, fmt='png', size=1024, print_width_cm=None, print_preset
                 else:
                     shapes.append(f'<rect x="{px+dx:g}" y="{py+dy:g}" width="{cell-2*dx:g}" height="{cell-2*dy:g}" rx="{radius:g}" fill="{fg_fill}"/>')
     if square_commands:
-        shapes.insert(0,f'<path d="{"".join(square_commands)}" fill="{fg_fill}"/>')
+        # Keep square modules crisp at the requested raster resolution.
+        shapes.insert(0,f'<path d="{"".join(square_commands)}" fill="{fg_fill}" shape-rendering="crispEdges"/>')
 
     outer = design.get('eye_frame_style') or design.get('eye_style', 'square')
     inner = design.get('eye_ball_style') or design.get('eye_style', 'square')

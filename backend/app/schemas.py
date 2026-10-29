@@ -212,14 +212,11 @@ def validate_content(kind, content):
                 'upi':'pa','form':'url','app':'url','file':'url','whatsapp':'phone','youtube':'url','instagram':'url','facebook':'url','linkedin':'url'}[kind]
     if not isinstance(content.get(required), str) or not content[required]:
         raise ValueError(f'Please complete the {required} field.')
+    if kind in ('youtube','instagram','facebook','linkedin'):
+        from .social import social_url
+        content['url'] = social_url(kind, content['url'])
     if kind in ('url','form','app','file','youtube','instagram','facebook','linkedin'):
         valid_url(content['url'])
-    if kind in ('youtube','instagram','facebook','linkedin'):
-        host=urlsplit(content['url']).hostname.lower().rstrip('.')
-        domains={'youtube':('youtube.com','youtu.be'),'instagram':('instagram.com',),
-                 'facebook':('facebook.com','fb.com'),'linkedin':('linkedin.com',)}[kind]
-        if not any(host==domain or host.endswith('.'+domain) for domain in domains):
-            raise ValueError(f'Enter a {kind.title()} profile or post URL.')
     if kind=='app' and content.get('platform','web') not in ('ios','android','web'):
         raise ValueError('Choose an app store destination.')
     if kind=='whatsapp' and not re.fullmatch(r'\+?[0-9() .\-]{7,30}',content['phone']):
@@ -336,6 +333,15 @@ class CardLink(Input):
 class CardSection(Input):
     title: str = Field(min_length=2, max_length=60)
     body: str = Field(min_length=1, max_length=1500)
+    body_html: str = Field(default='', max_length=20000)
+
+    @model_validator(mode='after')
+    def formatted(self):
+        from .rich_text import normalize_text
+        self.body, self.body_html = normalize_text(self.body, self.body_html, 1500)
+        if not self.body:
+            raise ValueError('Add details to this profile section.')
+        return self
 
 
 class CardExperience(Input):
@@ -343,12 +349,24 @@ class CardExperience(Input):
     organization: str = Field(default='', max_length=120)
     period: str = Field(default='', max_length=80)
     description: str = Field(default='', max_length=1000)
+    description_html: str = Field(default='', max_length=15000)
+
+    @model_validator(mode='after')
+    def formatted(self):
+        from .rich_text import normalize_text
+        self.description, self.description_html = normalize_text(self.description, self.description_html, 1000)
+        return self
 
 
 class CardSocial(Input):
     platform: Literal['linkedin','instagram','facebook','x','youtube','tiktok','github','pinterest','whatsapp','telegram']
-    url: str = Field(min_length=8, max_length=2048)
-    _url = field_validator('url')(valid_url)
+    url: str = Field(min_length=1, max_length=2048)
+
+    @model_validator(mode='after')
+    def destination(self):
+        from .social import social_url
+        self.url = valid_url(social_url(self.platform, self.url))
+        return self
 
 
 class CardInput(Input):
@@ -359,6 +377,7 @@ class CardInput(Input):
     phone: str = Field(default='', max_length=30)
     website: str = Field(default='', max_length=2048)
     bio: str = Field(default='',max_length=2000)
+    bio_html: str = Field(default='',max_length=30000)
     address: str = Field(default='',max_length=300)
     links: list[CardLink] = Field(default_factory=list,max_length=8)
     sections: list[CardSection] = Field(default_factory=list,max_length=10)
@@ -375,14 +394,16 @@ class CardInput(Input):
 
     @field_validator('profile_image','cover_image','company_logo')
     @classmethod
-    def media(cls,value):
+    def media(cls,value,info:ValidationInfo):
         if value:
             from .qr import normalize_card_image
-            return normalize_card_image(value)
+            return normalize_card_image(value,info.field_name)
         return None
 
     @model_validator(mode='after')
     def card_data(self):
+        from .rich_text import normalize_text
+        self.bio, self.bio_html = normalize_text(self.bio, self.bio_html, 2000)
         validate_content('vcard',{key:getattr(self,key) for key in ('name','title','company','email','phone','website','address')})
         normalized=[link.url.rstrip('/').lower() for link in self.links]
         if len(set(normalized))!=len(normalized):

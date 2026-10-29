@@ -28,6 +28,7 @@ export default function ExportDialog({onClose,onExport,title='Download QR code'}
   <Field label="File format"><select value={format} onChange={event=>setFormat(event.target.value as ExportFormat)}><option value="png">PNG · Image</option><option value="svg">SVG · Scalable vector</option><option value="pdf">PDF · Print ready</option></select></Field>
   <Field label="Output size"><select value={size} onChange={event=>setSize(event.target.value as ExportSize)}>{sizes.map(item=><option key={item.id} value={item.id}>{item.label} · {item.detail}</option>)}</select></Field>
   <p className="export-dpi-note"><FileText size={15}/> {selectedSize.width.toLocaleString()} px · {selectedSize.detail}</p>
+  {size==='compact'&&<p className="sublabel">Small labels have less room for logo and text detail. Choose Standard for a larger image, or SVG for scalable artwork.</p>}
   <ErrorBox error={error}/>
   <div className="modal-actions"><Button type="button" className="secondary" onClick={onClose}>Cancel</Button><Button type="button" busy={busy} onClick={submit}><Download size={16}/>Download {format.toUpperCase()}</Button></div>
  </Modal>;

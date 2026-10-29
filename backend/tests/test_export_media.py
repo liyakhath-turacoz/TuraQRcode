@@ -15,7 +15,7 @@ from app.schemas import Design
 
 def artwork():
     output=io.BytesIO()
-    Image.new('RGB',(180,120),'#2563eb').save(output,'PNG')
+    Image.new('RGB',(640,360),'#2563eb').save(output,'PNG')
     return 'data:image/png;base64,'+base64.b64encode(output.getvalue()).decode()
 
 
@@ -102,7 +102,7 @@ def test_card_invalid_media_social_and_incomplete_experience_are_rejected(client
 def test_card_uses_a_dark_link_color_on_white_panels_for_a_light_brand_accent(client,member):
     card=client.post('/api/cards',json={'name':'Readable card','color':'#102a56','text_color':'#ffffff','accent_color':'#bfdbfe','social_links':[{'platform':'linkedin','url':'https://linkedin.com/in/example'}]}).json()
     html=client.get('/c/'+card['slug']).text
-    assert 'color:#102a56' in html
+    assert '--accent:#102a56' in html
     assert 'color:#bfdbfe' not in html
 
 

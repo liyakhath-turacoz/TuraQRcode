@@ -25,7 +25,8 @@ async def security_headers(request:Request,call_next):
             return JSONResponse({'detail':'This request could not be verified. Please refresh the page and try again.'},403)
         try: length=int(request.headers.get('content-length','0'))
         except ValueError: return JSONResponse({'detail':'Invalid request.'},400)
-        if length>2_000_000: return JSONResponse({'detail':'This upload is too large. Please reduce the file size.'},413)
+        limit=3_000_000 if request.url.path.startswith('/api/cards') else 2_000_000
+        if length>limit: return JSONResponse({'detail':'This upload is too large. Please reduce the file size.'},413)
         # All supported mutations use bounded JSON/form bodies; reject unbounded transfers.
         if request.headers.get('transfer-encoding'):
             return JSONResponse({'detail':'Please submit a file with a known size.'},411)
