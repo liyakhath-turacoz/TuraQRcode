@@ -33,7 +33,8 @@ def owned(db,model,item_id,user):
 
 def code_payload(code):
     if code.mode=='static': return payload(code.kind,code.content)
-    return settings.public_base_url.rstrip('/')+'/r/'+code.slug+'?via=qr'
+    via='barcode' if code.kind=='barcode' else 'qr'
+    return settings.public_base_url.rstrip('/')+'/r/'+code.slug+'?via='+via
 
 
 def code_json(db,code,count=None):
@@ -55,9 +56,10 @@ def add_code(db,data,user):
 
 
 @router.post('/api/qr/preview')
-def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|svg|pdf)$')):
+def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float=Query(8.67,ge=2,le=50),print_preset:str=Query('standard',pattern='^(standard|social|business_card|a4|high_res)$')):
     throttle(request,'preview',120,60)
-    raw,mime=render_code(data.kind,data.content,data.design.model_dump(),format)
+    sample=(settings.public_base_url.rstrip('/')+'/r/preview?via=barcode') if data.kind=='barcode' and data.content.get('tracked') else None
+    raw,mime=render_code(data.kind,data.content,data.design.model_dump(),format,size,data=sample,print_width_cm=print_width_cm,print_preset=print_preset)
     return Response(raw,media_type=mime,headers={'Cache-Control':'no-store'})
 
 
@@ -121,11 +123,18 @@ def update_code(code_id:str,data:CodeUpdate,user:User=Depends(ready_user),db:Ses
     values=data.model_dump(exclude_unset=True)
     if any(key in values and values[key] is None for key in ('name','design','is_active','content')):
         raise HTTPException(422,'Please complete the required fields.')
-    if code.mode=='static' and any(k in values for k in ('content','expires_at','password','mobile_url')):
+    if code.mode=='static' and any(k in values for k in ('expires_at','password','mobile_url')):
         raise HTTPException(400,'The content of a static QR code cannot be changed. Create a new code to use different content.')
     if 'content' in values:
         try: values['content']=validate_content(code.kind,values['content'])
         except ValueError as e: raise HTTPException(422,str(e))
+        if code.mode=='static':
+            if code.kind!='barcode' or any(values['content'].get(key)!=(code.content.get(key,False) if key=='tracked' else code.content.get(key)) for key in ('format','value','tracked')):
+                raise HTTPException(400,'The value of a static code cannot be changed. Create a new code to use different content.')
+    if code.kind=='barcode' and code.mode=='dynamic' and 'content' in values and not values['content'].get('tracked'):
+        raise HTTPException(422,'Tracked barcodes must keep scan measurement enabled.')
+    if code.mode=='short' and 'content' in values and values['content'].get('url') is None:
+        raise HTTPException(422,'Enter a valid destination URL.')
     if values.get('project_id'): owned(db,Project,values['project_id'],user)
     if 'project_id' in values and not values['project_id']:
         values['project_id']=default_project(db,user.id).id
@@ -148,9 +157,9 @@ def delete_code(code_id:str,user:User=Depends(ready_user),db:Session=Depends(get
 
 
 @router.get('/api/codes/{code_id}/download')
-def download_code(code_id:str,format:str=Query('png',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=2048),user:User=Depends(ready_user),db:Session=Depends(get_db)):
+def download_code(code_id:str,format:str=Query('png',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float=Query(8.67,ge=2,le=50),print_preset:str=Query('standard',pattern='^(standard|social|business_card|a4|high_res)$'),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     code=owned(db,Code,code_id,user)
-    raw,mime=render_code(code.kind,code.content,code.design,format,size,data=code_payload(code))
+    raw,mime=render_code(code.kind,code.content,code.design,format,size,data=code_payload(code),print_width_cm=print_width_cm,print_preset=print_preset)
     name=re.sub(r'[^A-Za-z0-9_-]','-',code.name)[:70] or 'qrcode'
     return Response(raw,media_type=mime,headers={'Content-Disposition':f'attachment; filename="{name}.{format}"'})
 
@@ -226,11 +235,14 @@ def delete_project(project_id:str,user:User=Depends(ready_user),db:Session=Depen
     db.delete(project); db.commit()
 
 
-def analytics_data(db,user,days,code_id=None):
+def analytics_data(db,user,days,code_id=None,project_id=None):
     query=select(Event).join(Code).where(Code.user_id==user.id)
     if code_id:
         owned(db,Code,code_id,user)
         query=query.where(Code.id==code_id)
+    if project_id:
+        owned(db,Project,project_id,user)
+        query=query.where(Code.project_id==project_id)
     cutoff=now().replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(days=days-1)
     query=query.where(Event.created_at>=cutoff)
     events=query.subquery()
@@ -242,15 +254,15 @@ def analytics_data(db,user,days,code_id=None):
     devices=db.execute(select(events.c.device,func.count()).group_by(events.c.device).order_by(func.count().desc())).all()
     referrers=db.execute(select(events.c.referrer,func.count()).group_by(events.c.referrer).order_by(func.count().desc()).limit(10)).all()
     recent=db.scalars(query.order_by(Event.created_at.desc()).limit(25)).all()
-    return {'total':sum(channels.values()),'clicks':channels.get('link',0),'scans':channels.get('qr',0),'daily':[{'date':d,'count':c} for d,c in daily.items()],
+    return {'total':sum(channels.values()),'clicks':channels.get('link',0),'scans':channels.get('qr',0)+channels.get('barcode',0),'daily':[{'date':d,'count':c} for d,c in daily.items()],
             'devices':[{'name':k,'count':v} for k,v in devices],
             'referrers':[{'name':k,'count':v} for k,v in referrers],
             'recent':[{'id':e.id,'code_id':e.code_id,'channel':e.channel,'device':e.device,'referrer':e.referrer,'created_at':e.created_at} for e in recent],'truncated':False}
 
 
 @router.get('/api/analytics')
-def analytics(days:int=Query(30,ge=1,le=365),code_id:str|None=None,user:User=Depends(ready_user),db:Session=Depends(get_db)):
-    return analytics_data(db,user,days,code_id)
+def analytics(days:int=Query(30,ge=1,le=365),code_id:str|None=None,project_id:str|None=Query(None,max_length=36),user:User=Depends(ready_user),db:Session=Depends(get_db)):
+    return analytics_data(db,user,days,code_id,project_id)
 
 
 @router.get('/api/overview')
@@ -264,10 +276,11 @@ def overview(user:User=Depends(ready_user),db:Session=Depends(get_db)):
 
 
 @router.get('/api/analytics/export')
-def analytics_export(days:int=Query(30,ge=1,le=365),code_id:str|None=None,user:User=Depends(ready_user),db:Session=Depends(get_db)):
+def analytics_export(days:int=Query(30,ge=1,le=365),code_id:str|None=None,project_id:str|None=Query(None,max_length=36),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     cutoff=now().replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(days=days-1)
     query=select(Event,Code.name).join(Code).where(Code.user_id==user.id,Event.created_at>=cutoff)
     if code_id: owned(db,Code,code_id,user); query=query.where(Code.id==code_id)
+    if project_id: owned(db,Project,project_id,user); query=query.where(Code.project_id==project_id)
     out=io.StringIO(); writer=csv.writer(out); writer.writerow(['code','timestamp_utc','channel','device','referrer'])
     for e,name in db.execute(query.order_by(Event.created_at.desc()).limit(50000)):
         writer.writerow([safe_csv(v) for v in (name,e.created_at.isoformat(),e.channel,e.device,e.referrer)])
@@ -292,9 +305,11 @@ def track_redirect(db,code,request,via,status_code=302):
     mobile=any(x in ua for x in ('mobile','android','iphone','ipad'))
     try: ref=(urlsplit(request.headers.get('referer','')).hostname or 'Direct')[:253]
     except ValueError: ref='Direct'
-    db.add(Event(code_id=code.id,channel='qr' if via=='qr' else 'link',device='Mobile' if mobile else 'Desktop',referrer=ref))
+    channel='barcode' if via=='barcode' else 'qr' if via=='qr' else 'link'
+    db.add(Event(code_id=code.id,channel=channel,device='Mobile' if mobile else 'Desktop',referrer=ref))
     db.commit()
-    return RedirectResponse(code.mobile_url if mobile and code.mobile_url else code.content['url'],status_code=status_code,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+    destination=code.content['value'] if code.kind=='barcode' else code.content['url']
+    return RedirectResponse(code.mobile_url if mobile and code.mobile_url else destination,status_code=status_code,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
 
 
 def password_page(slug,via,error='',status_code=200):

@@ -2,6 +2,7 @@ import base64
 import io
 import zipfile
 from datetime import timedelta
+from sqlalchemy import text
 import pytest
 import zxingcpp
 from PIL import Image
@@ -65,8 +66,21 @@ def test_alias_uniqueness_and_short_links(client,member):
 def test_pause_expiration_and_reactivation(client,code):
     endpoint='/api/codes/'+code['id'];link='/r/'+code['slug']
     client.patch(endpoint,json={'is_active':False});assert client.get(link).status_code==410
-    client.patch(endpoint,json={'is_active':True,'expires_at':(now()-timedelta(days=1)).isoformat()});assert client.get(link).status_code==410
+    client.patch(endpoint,json={'is_active':True});assert client.patch(endpoint,json={'expires_at':(now()-timedelta(days=1)).isoformat()}).status_code==422
+    from app.db import engine
+    with engine().begin() as connection: connection.execute(text('UPDATE tura.codes SET expires_at=:expiry WHERE id=:id'),{'expiry':now()-timedelta(days=1),'id':code['id']})
+    assert client.get(link).status_code==410
     client.patch(endpoint,json={'expires_at':None});assert client.get(link,follow_redirects=False).status_code==302
+
+def test_expiry_accepts_future_today_time_and_rejects_time_that_has_passed(client,member):
+    from datetime import datetime,timezone
+    future=datetime.now(timezone.utc)+timedelta(minutes=2)
+    valid=client.post('/api/codes',json={'name':'Today future expiry','content':{'url':'https://example.com/today'},'expires_at':future.isoformat()})
+    assert valid.status_code==201,valid.text
+    past=datetime.now(timezone.utc)-timedelta(minutes=1)
+    invalid=client.post('/api/codes',json={'name':'Past expiry','content':{'url':'https://example.com/past'},'expires_at':past.isoformat()})
+    assert invalid.status_code==422 and 'future' in str(invalid.json()['detail']).lower()
+    assert client.patch('/api/codes/'+valid.json()['id'],json={'expires_at':past.isoformat()}).status_code==422
 
 def test_password_protected_redirect_has_no_leak_or_false_events(client,member):
     c=client.post('/api/codes',json={'name':'Protected','content':{'url':'https://example.com/hidden'},'password':'Access123'}).json()
@@ -116,6 +130,24 @@ def test_bulk_partial_success_and_recovery_after_conflicts(client,member):
     assert r.status_code==200,r.text
     assert r.json()['created']==2 and [r['success'] for r in r.json()['results']]==[True,False,False,True]
     assert client.get('/api/codes').json()['total']==2
+
+
+def test_bulk_short_links_keep_valid_rows_and_report_bad_or_duplicate_rows(client,member):
+    rows=[
+        {'name':'Valid short link','kind':'url','mode':'short','alias':'bulk-short-good','content':{'url':'https://example.com/valid'}},
+        {'name':'Invalid destination','kind':'url','mode':'short','content':{'url':'javascript:alert(1)'}},
+        {'name':'Missing destination','kind':'url','mode':'short','content':{}},
+        {'name':'Duplicate alias','kind':'url','mode':'short','alias':'bulk-short-good','content':{'url':'https://example.com/duplicate'}},
+    ]
+    response=client.post('/api/codes/bulk',json={'rows':rows})
+    assert response.status_code==200,response.text
+    body=response.json()
+    assert body['created']==1
+    assert [row['success'] for row in body['results']]==[True,False,False,False]
+    assert body['results'][0]['code']['mode']=='short'
+    assert body['results'][0]['code']['project_id']==client.get('/api/projects').json()[0]['id']
+    assert all(row['error'] for row in body['results'][1:])
+    assert client.get('/api/codes?mode=short').json()['total']==1
 
 def test_filters_pagination_sort_and_delete(client,member):
     for name in ['Bravo','Alpha']:

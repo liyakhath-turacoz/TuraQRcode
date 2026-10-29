@@ -1,10 +1,20 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator, ValidationInfo
 
 POLICY_VERSION = '2026-10-29'
+
+
+def validate_expiry(value):
+    if value is None:
+        return value
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError('Include a time zone with the expiry date.')
+    if value <= datetime.now(timezone.utc):
+        raise ValueError('Choose an expiry date and time in the future.')
+    return value
 
 
 class Input(BaseModel):
@@ -87,15 +97,39 @@ def readable_ink(color):
 
 class Design(Input):
     foreground: str = '#163b75'
+    foreground_end: str | None = None
+    foreground_angle: int = Field(default=0,ge=0,le=359)
     background: str = '#ffffff'
+    background_end: str | None = None
+    background_angle: int = Field(default=0,ge=0,le=359)
     pattern: Literal['square', 'rounded', 'dots', 'diamond', 'soft', 'horizontal', 'vertical'] = 'square'
     eye_style: Literal['square', 'rounded', 'circle'] = 'square'
+    eye_frame_style: Literal['square', 'rounded', 'circle'] | None = None
+    eye_ball_style: Literal['square', 'rounded', 'circle', 'diamond'] | None = None
     eye_color: str | None = None
     frame: Literal['none', 'scan', 'banner', 'border'] = 'none'
     frame_label: str = Field(default='SCAN ME',min_length=1,max_length=24)
+    top_text: str = Field(default='',max_length=32)
+    bottom_text: str = Field(default='',max_length=32)
+    text_size: int = Field(default=20,ge=12,le=36)
+    text_bold: bool = True
+    text_italic: bool = False
+    top_text_size: int | None = Field(default=None,ge=12,le=36)
+    top_text_bold: bool | None = None
+    top_text_italic: bool | None = None
+    top_text_color: str | None = None
+    top_text_offset: int = Field(default=0,ge=-8,le=32)
+    bottom_text_size: int | None = Field(default=None,ge=12,le=36)
+    bottom_text_bold: bool | None = None
+    bottom_text_italic: bool | None = None
+    bottom_text_color: str | None = None
+    bottom_text_offset: int = Field(default=0,ge=-8,le=32)
     logo: str | None = Field(default=None, max_length=700000)
+    barcode_module_width: float = Field(default=0.3, ge=0.2, le=0.8)
+    barcode_height: int = Field(default=22, ge=12, le=60)
+    barcode_font_size: int = Field(default=11, ge=8, le=24)
 
-    @field_validator('foreground', 'background', 'eye_color')
+    @field_validator('foreground', 'foreground_end', 'background', 'background_end', 'eye_color', 'top_text_color', 'bottom_text_color')
     @classmethod
     def color(cls, value):
         if value is None: return value
@@ -105,32 +139,48 @@ class Design(Input):
 
     @model_validator(mode='after')
     def contrast(self):
-        fg, bg = luminance(self.foreground), luminance(self.background)
-        if bg <= fg or (bg+.05)/(fg+.05) < 4.5:
-            raise ValueError('Use a dark QR color and light background with stronger contrast.')
-        eye=luminance(self.eye_color or self.foreground)
-        if bg<=eye or (bg+.05)/(eye+.05)<4.5:
-            raise ValueError('Choose a darker eye color for reliable scanning.')
+        backgrounds = [luminance(self.background)] + ([luminance(self.background_end)] if self.background_end else [])
+        foregrounds = [luminance(self.foreground)] + ([luminance(self.foreground_end)] if self.foreground_end else [])
+        if any((max(bg,fg)+.05)/(min(bg,fg)+.05) < 4.5 for bg in backgrounds for fg in foregrounds):
+            raise ValueError('Choose QR and background colors with clear contrast across the full design.')
+        eye=luminance(self.eye_color) if self.eye_color else None
+        if eye is not None and any((max(bg,eye)+.05)/(min(bg,eye)+.05)<4.5 for bg in backgrounds):
+            raise ValueError('Choose a corner-marker color with clear contrast against the full QR background.')
+        for label_color in (self.top_text_color,self.bottom_text_color):
+            if label_color and any((max(bg,luminance(label_color))+.05)/(min(bg,luminance(label_color))+.05)<4.5 for bg in backgrounds):
+                raise ValueError('Choose a text color with clear contrast against the full QR background.')
         if not self.frame_label.isascii() or any(ord(c)<32 for c in self.frame_label):
             raise ValueError('Use printable English letters, numbers, or punctuation for the frame label.')
+        if any(ord(c)<32 or ord(c)==127 for text in (self.top_text,self.bottom_text) for c in text):
+            raise ValueError('Use printable characters for the text above and below your QR code.')
+        if self.eye_frame_style=='square' and self.eye_ball_style=='diamond':
+            raise ValueError('Choose rounded or circular corner frames when using a diamond center.')
         if self.logo:
             from .qr import normalize_logo
             self.logo = normalize_logo(self.logo)
         return self
 
 
-Kind = Literal['url', 'text', 'email', 'phone', 'sms', 'wifi', 'vcard', 'barcode']
+Kind = Literal['url', 'text', 'email', 'phone', 'sms', 'wifi', 'vcard', 'barcode', 'upi', 'form', 'app', 'file', 'whatsapp', 'youtube', 'instagram', 'facebook', 'linkedin']
+DYNAMIC_URL_KINDS = ('url','form','app','file','youtube','instagram','facebook','linkedin')
 
 
 def validate_content(kind, content):
     if kind=='barcode':
-        from .barcodes import validate_barcode
+        try:
+            from .barcodes import validate_barcode
+        except ImportError:
+            raise ValueError('Barcode generation is temporarily unavailable. Please try again later.') from None
         return validate_barcode(content)
     allowed = {
         'url': {'url'}, 'text': {'text'}, 'email': {'email','subject','body'},
         'phone': {'phone'}, 'sms': {'phone','message'},
         'wifi': {'ssid','password','security','hidden'},
         'vcard': {'name','company','title','email','phone','website','address'},
+        'upi': {'pa','pn','am','cu','tn'},
+        'form': {'url'}, 'app': {'url','platform'}, 'file': {'url'},
+        'whatsapp': {'phone','message'},
+        'youtube': {'url'}, 'instagram': {'url'}, 'facebook': {'url'}, 'linkedin': {'url'},
     }[kind]
     if set(content) - allowed:
         raise ValueError('Unsupported content fields.')
@@ -140,11 +190,29 @@ def validate_content(kind, content):
     content = {k: v.strip() if isinstance(v, str) and k not in preserve else v for k,v in content.items()}
     if any(isinstance(v, str) and len(v) > 2000 for v in content.values()):
         raise ValueError('Content fields must be 2,000 characters or fewer.')
-    required = {'url':'url', 'text':'text', 'email':'email', 'phone':'phone', 'sms':'phone', 'wifi':'ssid', 'vcard':'name'}[kind]
+    required = {'url':'url', 'text':'text', 'email':'email', 'phone':'phone', 'sms':'phone', 'wifi':'ssid', 'vcard':'name',
+                'upi':'pa','form':'url','app':'url','file':'url','whatsapp':'phone','youtube':'url','instagram':'url','facebook':'url','linkedin':'url'}[kind]
     if not isinstance(content.get(required), str) or not content[required]:
         raise ValueError(f'Please complete the {required} field.')
-    if kind == 'url':
+    if kind in ('url','form','app','file','youtube','instagram','facebook','linkedin'):
         valid_url(content['url'])
+    if kind in ('youtube','instagram','facebook','linkedin'):
+        host=urlsplit(content['url']).hostname.lower().rstrip('.')
+        domains={'youtube':('youtube.com','youtu.be'),'instagram':('instagram.com',),
+                 'facebook':('facebook.com','fb.com'),'linkedin':('linkedin.com',)}[kind]
+        if not any(host==domain or host.endswith('.'+domain) for domain in domains):
+            raise ValueError(f'Enter a {kind.title()} profile or post URL.')
+    if kind=='app' and content.get('platform','web') not in ('ios','android','web'):
+        raise ValueError('Choose an app store destination.')
+    if kind=='whatsapp' and not re.fullmatch(r'\+?[0-9() .\-]{7,30}',content['phone']):
+        raise ValueError('Enter a valid WhatsApp phone number, including its country code.')
+    if kind=='upi':
+        if not re.fullmatch(r'[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}',content['pa']):
+            raise ValueError('Enter a valid UPI ID, such as name@bank.')
+        if content.get('am') and not re.fullmatch(r'(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?',content['am']):
+            raise ValueError('Enter an amount with up to two decimal places.')
+        if content.get('cu','INR')!='INR':
+            raise ValueError('Choose a supported UPI currency.')
     if kind == 'vcard' and content.get('website'):
         valid_url(content['website'])
     if kind in ('email','vcard') and content.get('email'):
@@ -176,11 +244,22 @@ class CodeCreate(Input):
     password: str | None = Field(default=None, min_length=6, max_length=128)
     mobile_url: str | None = None
 
+    @field_validator('expires_at')
+    @classmethod
+    def expiry_must_be_future(cls, value):
+        return validate_expiry(value)
+
     @model_validator(mode='after')
     def validate_code(self):
         self.content = validate_content(self.kind, self.content)
-        if self.mode != 'static' and self.kind != 'url':
-            raise ValueError('Editable codes and short links require a website address.')
+        if self.mode == 'short' and self.kind != 'url':
+            raise ValueError('Short links require a website address.')
+        if self.mode == 'dynamic' and self.kind not in (*DYNAMIC_URL_KINDS,'barcode'):
+            raise ValueError('Choose a website, app, file, form, or social URL for an editable QR code.')
+        if self.kind=='barcode' and self.mode=='dynamic' and (not self.content.get('tracked') or self.content.get('format')!='code128'):
+            raise ValueError('Tracked barcodes require the Code 128 format and an http:// or https:// destination.')
+        if self.kind=='barcode' and self.mode=='static' and self.content.get('tracked'):
+            raise ValueError('Choose tracked Code 128 mode to measure scans.')
         if self.mode == 'static' and (self.expires_at or self.password or self.mobile_url or self.alias):
             raise ValueError('Link controls are available for editable codes and short links.')
         if self.mode == 'static' and self.kind!='barcode':
@@ -203,6 +282,11 @@ class CodeUpdate(Input):
     password: str | None = Field(default=None, max_length=128)
     mobile_url: str | None = None
 
+    @field_validator('expires_at')
+    @classmethod
+    def expiry_must_be_future(cls, value):
+        return validate_expiry(value)
+
 
 class Preview(Input):
     kind: Kind = 'url'
@@ -220,6 +304,21 @@ class ProjectInput(Input):
     color: str = Field(default='#2563eb', pattern=r'^#[0-9a-fA-F]{6}$')
 
 
+class CardLink(Input):
+    label: str = Field(min_length=2,max_length=40)
+    url: str = Field(min_length=8,max_length=2048)
+
+    @field_validator('url')
+    @classmethod
+    def link_url(cls,value):
+        return valid_url(value)
+
+
+class CardSection(Input):
+    title: str = Field(min_length=2, max_length=60)
+    body: str = Field(min_length=1, max_length=1500)
+
+
 class CardInput(Input):
     name: str = Field(min_length=2, max_length=100)
     title: str = Field(default='', max_length=120)
@@ -227,11 +326,30 @@ class CardInput(Input):
     email: str = Field(default='', max_length=254)
     phone: str = Field(default='', max_length=30)
     website: str = Field(default='', max_length=2048)
+    bio: str = Field(default='',max_length=2000)
+    address: str = Field(default='',max_length=300)
+    links: list[CardLink] = Field(default_factory=list,max_length=8)
+    sections: list[CardSection] = Field(default_factory=list,max_length=10)
     color: str = Field(default='#2563eb', pattern=r'^#[0-9a-fA-F]{6}$')
+    background_end: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    background_angle: int = Field(default=135,ge=0,le=359)
+    text_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    accent_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
 
     @model_validator(mode='after')
     def card_data(self):
-        validate_content('vcard', self.model_dump(exclude={'color'}))
+        validate_content('vcard',{key:getattr(self,key) for key in ('name','title','company','email','phone','website','address')})
+        normalized=[link.url.rstrip('/').lower() for link in self.links]
+        if len(set(normalized))!=len(normalized):
+            raise ValueError('Each profile link must have a different address.')
+        section_names=[section.title.casefold() for section in self.sections]
+        if len(set(section_names))!=len(section_names):
+            raise ValueError('Each profile section must have a different title.')
+        if self.text_color:
+            backgrounds=[luminance(self.color)]+([luminance(self.background_end)] if self.background_end else [])
+            ink=luminance(self.text_color)
+            if any((max(bg,ink)+.05)/(min(bg,ink)+.05)<4.5 for bg in backgrounds):
+                raise ValueError('Choose a profile text color with clear contrast against the full background.')
         return self
 
 

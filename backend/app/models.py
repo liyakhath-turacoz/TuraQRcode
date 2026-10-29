@@ -87,7 +87,16 @@ class BusinessCard(Base):
     email: Mapped[str] = mapped_column(String(254), default='')
     phone: Mapped[str] = mapped_column(String(30), default='')
     website: Mapped[str] = mapped_column(Text, default='')
+    bio: Mapped[str] = mapped_column(Text, default='')
+    address: Mapped[str] = mapped_column(String(300), default='')
+    links: Mapped[list] = mapped_column(JSON, default=list)
+    sections: Mapped[list] = mapped_column(JSON, default=list)
     color: Mapped[str] = mapped_column(String(7), default='#087e70')
+    background_end: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    background_angle: Mapped[int] = mapped_column(Integer, default=135, nullable=False)
+    text_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    accent_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    qr_code_id: Mapped[str | None] = mapped_column(ForeignKey('tura.codes.id', ondelete='SET NULL'), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

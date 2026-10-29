@@ -22,6 +22,7 @@ os.environ['FRONTEND_URL']='http://127.0.0.1:5183'
 os.environ['CORS_ORIGINS']='http://127.0.0.1:5183,http://127.0.0.1:5184'
 os.environ['INITIAL_ADMIN_PASSWORD']='Admin'
 os.environ['COOKIE_SECURE']='false'
+os.environ['E2E_TEST_MODE']='true'
 from app.db import engine
 from app.manage import migrate,seed
 with engine().begin() as connection:

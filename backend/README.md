@@ -17,6 +17,8 @@ python -m venv .venv
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+Run the API with `.venv\Scripts\python.exe` as shown. The system Python may contain an unrelated package named `barcode`; installing `requirements.txt` in the project environment provides the barcode generator used here.
+
 The supplied Supabase project is connected using `DATABASE_URL` in `backend/.env`. The project URL and publishable key alone cannot authorize direct PostgreSQL access. Get a session-pooler PostgreSQL URI from Supabase → Connect, and URL-encode special characters in its password. All connection credentials stay on the server. Environment variables override environment files. An optional root `backend.env` is also recognized for compatibility, but keep configuration in `backend/.env` to preserve the three-folder layout.
 
 `app.manage init` applies Alembic migrations and creates the initial administrator if it does not exist. It never resets an existing administrator password. The initial email is **Admin@turacoz.com**; its temporary password is configured privately through `INITIAL_ADMIN_PASSWORD` before first initialization. The password is hashed with Argon2id and the account is blocked from product and administration operations until it changes its password. Clear `INITIAL_ADMIN_PASSWORD` after initialization. Never put bootstrap credentials in a frontend environment file or publish them in deployment documentation.
@@ -31,7 +33,7 @@ After dependencies are installed in all three folders, start them together from 
 
 - Registration with recorded Terms & Conditions and Privacy Policy acceptance; sign-in, logout, profile updates, strong-password changes, session revocation, and expiring single-use recovery links.
 - Seven QR content types: URL, text, email, phone, SMS, Wi-Fi, and vCard. Editable URL QR codes and short links support custom aliases, changing destinations, expiration, access passwords, mobile destinations, and pausing.
-- Seven patterns and three corner styles; foreground, background, and eye colors with contrast validation; customizable label/border frames; normalized raster logos; PNG, SVG, and PDF exports.
+- Seven QR patterns and independent corner styles; 20 scan-safe color palettes including gradients; contrast validation; movable, individually styled labels; customizable frames; normalized raster logos; PNG, SVG, and PDF exports.
 - Code 128, Code 39, EAN-13, EAN-8, and UPC-A barcode generation with validated check digits, captions, and PNG/SVG/PDF exports.
 - A default project per account, including existing users and previously unassigned codes; safe project deletion moves codes to the default.
 - Ownership-protected saved codes, search, filters, pagination, projects, business cards, bulk creation with row-level results, ZIP bundles, and A4 print sheets.

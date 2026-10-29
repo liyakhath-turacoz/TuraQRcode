@@ -149,7 +149,7 @@ TuraQRcode/
 │   │   ├── styles.css
 │   │   ├── accessibility.css
 │   │   ├── shared/                  This app's API, account, UI, type/style primitives
-│   │   ├── components/              Layout, QR/barcode builders, safe colors, campaign tags, charts
+│   │   ├── components/              Layout, QR/barcode builders, safe colors, link previews, charts
 │   │   └── pages/                   Public/legal, codes, organization, bulk, settings
 │   ├── design-system/turaqrcode/     Visual guidance and product reference plan
 │   ├── playwright.config.ts
@@ -188,15 +188,15 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Area | Implemented behavior |
 |---|---|
 | Public generator | Account-free static QR preview and PNG/SVG/PDF downloads |
-| QR content types | Website URL, plain text, email (recipient/subject/body), telephone, SMS (number/message), Wi-Fi (SSID/password/security/hidden), and vCard contact details |
-| QR modes | Static QR codes for all seven QR types; editable URL QR codes and trackable short links; static linear barcodes |
-| Design | Dark foreground/light background with contrast checks; classic, rounded, or dot pattern; optional “Scan me” frame; raster PNG/JPG/WebP logo, maximum 500 KB and 4 megapixels |
-| Barcodes | Public generator and saved-code management for Code 128, Code 39, EAN-13, EAN-8, UPC-A; checksum calculation/verification for EAN/UPC; optional value caption; contrasting colors; PNG/SVG/PDF and saved bundle/print exports |
+| QR content types | Website URL, plain text, email, telephone, SMS, Wi-Fi, UPI payment, form URL, app listing, public file URL, WhatsApp, YouTube, Instagram, Facebook, LinkedIn, and vCard contact details. Form and file codes point to an existing public URL; TuraQRcode does not host the file or create the form. |
+| QR modes | Static QR codes for all supported content types; editable, trackable website, form, app, file, and supported social URL QR codes plus short links; trackable Code 128 barcodes that open a website; fixed-value retail and inventory barcodes |
+| Design | Seven module patterns, independent corner-frame and center styles, 20 contrast-checked solid and gradient palettes, optional foreground/marker colors, independently styled labels that can be moved above or below the code, callout/border frames, and raster PNG/JPG/WebP logo up to 500 KB and 4 megapixels |
+| Barcodes | Separate saved barcode history; Code 128, Code 39, EAN-13, EAN-8, UPC-A; EAN/UPC check digits; optional value caption; high-contrast color presets and custom colors; adjustable bar width, height, and caption size; PNG/SVG/PDF and saved bundle/print exports. Track scan requests with managed Code 128 website links. |
 | Exports | PNG (256–2048 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
-| Short links | The Links workspace lists short links only; it has its own create flow, destination, optional UTM tags, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
+| Short links | The Links workspace lists short links only; it has its own create flow, destination, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
 | Editable destinations | Update a managed URL without changing its short address or QR payload |
 | Link controls | Pause/reactivate, optional expiry, optional access password, optional alternate mobile destination |
-| Saved codes | QR, Links, and Barcodes each have separate saved lists. The QR list excludes short links and barcodes; the Links list includes short links only. Search, relevant filters, project selection, sort, pagination, edit, delete, and export are available |
+| Saved codes | QR, Links, and Barcodes each have separate saved lists. The QR list excludes short links and barcodes; the Links list includes short links only; Barcode history contains barcode records only. Search, relevant filters, project selection, sort, pagination, edit, delete, and export are available |
 | Overview | Code/active-code counts, clicks/scans, 14-day activity, top connections, devices, recent codes, quick-create shortcuts |
 | Analytics | Each trackable redirect is saved against its code with time, link-click or QR-scan channel, device category, and referrer host. Per-link activity is opened from its click count; reporting includes date filters, UTC daily trends, latest 25 requests, and CSV export up to 50,000 rows |
 | Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Project cards link to separate QR, Links, and Barcodes lists. Existing unassigned codes are migrated. Rename/color projects; deletion moves items to the default project, which cannot be deleted |
@@ -212,7 +212,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 
 ### Important behavior and limits
 
-- Static QR content is fixed. Static scans are not tracked; pausing or deleting a saved static record cannot disable an already downloaded code.
+- Static QR content and direct retail barcode values are fixed. Static scans are not tracked; pausing or deleting a saved static record cannot disable an already downloaded code. Choose an editable website, form, app, file, or supported social URL QR code—or tracked Code 128 barcode—to measure scans.
 - Editable codes and short links depend on the running service, active account/link, and public hostname. Set that hostname before distributing codes; changing configuration cannot rewrite printed images.
 - A short link’s current destination and settings are saved in PostgreSQL. Its visit events are retained as activity history and removed with the link. Editing a destination replaces the current destination; prior destination revisions are not retained.
 - Analytics count requests, including repeats and bots. They do not claim unique people, precise geolocation, or verified human scans. Referrers/devices can be incomplete.
@@ -291,7 +291,7 @@ Each app creates its own `dist`. Production serves these files with Nginx and ro
 
 ## Tests and verification
 
-The current verification covers **96 backend tests, 15 Chromium browser scenarios, successful builds for both React applications, and no known vulnerabilities in the dependency audits**. Live Supabase checks covered TLS, migrations, administrator state, temporary-account CRUD, default projects, protected unlocks, barcode exports, redirects, analytics, downloads, authorization, and cleanup. See [the verification report](backend/docs/VERIFICATION.md) for exact coverage and limits.
+The current verification covers **129 backend tests, 19 Chromium browser scenarios, successful builds for both React applications, and no known vulnerabilities in the dependency audits**. Live Supabase checks covered TLS, migrations, administrator state, temporary-account CRUD, default projects, protected unlocks, barcode exports, redirects, analytics, downloads, authorization, and cleanup. See [the verification report](backend/docs/VERIFICATION.md) for exact coverage and limits.
 
 To reproduce tests on the Windows development environment, first start genuine isolated local PostgreSQL in a separate terminal:
 

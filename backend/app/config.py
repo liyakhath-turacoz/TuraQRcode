@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     smtp_password: str = ''
     smtp_from: str = ''
     smtp_starttls: bool = True
+    e2e_test_mode: bool = False
 
     @property
     def origins(self):

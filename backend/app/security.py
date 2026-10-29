@@ -29,6 +29,8 @@ def verify(value, hashed):
 
 def throttle(request: Request, scope: str, limit: int = 30, seconds: int = 60, identity: str = ''):
     # Single-process limiter. Use a shared gateway limiter before scaling workers.
+    if settings.e2e_test_mode:
+        limit = max(limit, 1000)
     key = (scope, request.client.host if request.client else 'unknown', identity)
     current = time.monotonic()
     with lock:

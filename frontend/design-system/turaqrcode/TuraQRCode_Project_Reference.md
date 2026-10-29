@@ -134,7 +134,7 @@ The application source is organized into `backend`, `admin`, and `frontend`. Eac
 
 The 14 planned routes are implemented, with additional Terms & Conditions, Privacy Policy, first-password-change, public short-link, and public contact-card routes. Billing and integrations are excluded from this release as planned.
 
-The seven initial content types are URL, plain text, email, telephone, SMS, Wi-Fi, and vCard. Editable destinations and request analytics apply to URL-based codes and short links. Static codes contain fixed content and remain readable independently after download.
+The initial types have expanded to URL, plain text, email, telephone, SMS, Wi-Fi, UPI, form URL, app listing URL, public file URL, WhatsApp, YouTube, Instagram, Facebook, LinkedIn, and vCard. Website, form, app-listing, public-file, and supported social URL QR codes can use editable destinations and request analytics. Payment, contact, messaging, Wi-Fi, and plain-text QR types encode their content directly and are static. Form and file codes point to a public destination; the application does not host uploads or build forms.
 
 | Planned feature group | Initial implementation |
 |---|---|
@@ -158,10 +158,16 @@ Self-service per-account domain provisioning, multiple social-profile fields, fi
 - Primary blue `#2563EB`, navy text/sidebar, light canvas, improved contrast, consistent customer/admin appearance.
 - Added public `/barcode-generator` and signed-in `/app/links`, `/app/links/new`, `/app/barcodes`, `/app/barcodes/new`. The customer application now has 22 explicit routes.
 - Seven QR patterns, three corner styles, independent corner color, four presets, custom frame labels, outline/border variants, and compatible color controls. Preserve the four-module QR quiet zone, including with a border frame.
-- Five barcode standards with EAN/UPC check-digit validation, captions, PNG/SVG/PDF exports, saved management, and bundle/print support.
+- Five barcode standards with EAN/UPC check-digit validation, optional captions, contrasting palettes, adjustable bar width/height/caption size, PNG/SVG/PDF exports, and a filtered saved-code history. Tracked Code 128 barcodes can route to a website and report scan requests; EAN/UPC and direct-value formats remain fixed.
 - Dedicated short-link workflow includes UTM campaign tags alongside existing aliases, expiry, passwords, mobile destination, and analytics.
 - Every user receives a default project. The migration backfills existing users and unassigned codes. Deleting another project moves its contents to the default; the default can be renamed and cannot be deleted.
 - Any hex color is supported for business cards. Text automatically contrasts with the card color, and the exported QR uses a separate safe dark color when necessary.
 - Protected-form requests handle disconnected clients and use 303 navigation after unlocking; browser coverage includes desktop and mobile destinations on another origin.
 
 See [reference review](REFERENCE_REVIEW.md) for observed QRStuff/Bitly features and scope decisions. This expansion supersedes the initial three-pattern, preset-card-color, and unassigned-project descriptions above.
+
+## QR type and barcode behavior (29 October 2026)
+
+The QR creator includes the content types shown in the supplied reference: URL, Plain Text, Email, Phone, SMS, WiFi Login, UPI, Form, App, File, WhatsApp, YouTube, Instagram, Facebook, and LinkedIn, plus vCard contact details. UPI values use a payment URI; WhatsApp numbers become `wa.me` links; social URLs are checked against the matching service host. App, form, file, and supported social URL choices require a destination URL; these can use editable mode. A file must already be publicly reachable, and a form must already exist.
+
+The Barcode page filters by `kind=barcode`, so it shows saved barcode records rather than mixing QR codes and links into the history. Each record keeps its value, appearance, project, and creation date. Code 128 can optionally encode a managed short URL that records scan requests and redirects to a website. Standard static retail barcodes continue to encode their assigned value directly; those scans cannot be counted without changing what the scanner reads. Every QR code, link, and barcode is assigned to the user?s default project unless another project is selected.

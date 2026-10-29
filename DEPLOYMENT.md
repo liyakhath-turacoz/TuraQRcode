@@ -134,6 +134,17 @@ These placeholders are not working credentials. Copy the exact PostgreSQL URI fr
 | `SMTP_*` | Your mail provider's host, port, credentials, sender, and STARTTLS choice. Configure and test actual email delivery before relying on emailed recovery. |
 | `SECRET_KEY` | Reserved setting in the current config/template; current sessions use random server-stored opaque tokens, so this is not a JWT signing key. Do not publish a value if you choose to set it. |
 
+### Changing the public link domain
+
+The public origin is configuration-driven. All newly generated managed QR destinations, short links, and digital-card addresses use `PUBLIC_BASE_URL`; no frontend source edit or rebuild is needed to change that hostname. For example, to move new links from `https://qr.example.com` to `https://go.example.com`:
+
+1. Add the new hostname in CloudPanel, point its DNS record to the same server, and issue its HTTPS certificate.
+2. Merge [`backend/deploy/cloudpanel/short-domain.locations.conf`](backend/deploy/cloudpanel/short-domain.locations.conf) into that hostname's Nginx server block. It routes `/r/` and `/c/` to FastAPI and returns 404 for unrelated paths.
+3. Set `PUBLIC_BASE_URL=https://go.example.com` in `backend/.env`. Keep `FRONTEND_URL` on the customer application domain. Include the real customer/admin origins in `CORS_ORIGINS`; the backend also permits the configured `PUBLIC_BASE_URL` for its hosted password-protected redirects.
+4. Restart FastAPI with `sudo systemctl restart turaqrcode` and verify `/api/ready`, a new editable QR redirect, a short link, and a business-card profile over HTTPS.
+
+This changes URLs generated from then on. A QR code already printed with the old hostname still points to that old hostname, so keep its DNS and redirect routes active or update/reprint the affected code before retiring the old domain. Choose the permanent hostname before distributing codes whenever possible.
+
 If using the same Supabase database already initialized during development, its administrator/data remain present; `init` does not replace that administrator's password. For a new production database, set a private strong temporary bootstrap password rather than publishing a shared password in documentation.
 
 For stronger database certificate identity verification, use Supabase's provided CA/trust configuration with `sslmode=verify-full`. The backend enforces encrypted remote PostgreSQL connections and preserves a supplied `verify-ca`/`verify-full` setting. Keep `tura` private and do not add it to Supabase exposed API schemas. See [Supabase connection guidance](https://supabase.com/docs/guides/database/connecting-to-postgres).

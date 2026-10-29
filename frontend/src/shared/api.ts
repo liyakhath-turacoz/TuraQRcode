@@ -1,3 +1,5 @@
+import {invalidateResources} from './resourceCache';
+
 export const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 export class ApiError extends Error { constructor(message:string,public status:number){super(message);} }
 export async function api<T>(path:string, options:RequestInit={}):Promise<T>{
@@ -9,8 +11,10 @@ export async function api<T>(path:string, options:RequestInit={}):Promise<T>{
     try{ const data=await response.json(); if(typeof data.detail==='string') message=data.detail; }catch{ /* generic message */ }
     throw new ApiError(message,response.status);
   }
-  if(response.status===204) return undefined as T;
-  return response.json();
+  if(response.status===204){if((options.method||'GET').toUpperCase()!=='GET')invalidateResources();return undefined as T;}
+  const result=await response.json() as T;
+  if((options.method||'GET').toUpperCase()!=='GET')invalidateResources();
+  return result;
 }
 export const post=<T>(path:string,data:unknown)=>api<T>(path,{method:'POST',body:JSON.stringify(data)});
 export const patch=<T>(path:string,data:unknown)=>api<T>(path,{method:'PATCH',body:JSON.stringify(data)});
