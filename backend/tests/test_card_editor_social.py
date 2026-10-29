@@ -105,9 +105,12 @@ def test_card_image_dimensions_limits_and_aspect_ratios(client,member):
     result=client.post('/api/cards',json=body)
     assert result.status_code==201,result.text
     card=result.json()
-    for key,expected in [('profile_image',(512,512)),('cover_image',(1280,720)),('company_logo',(512,171))]:
+    for key,expected in [('profile_image',(512,512)),('cover_image',(1280,720)),('company_logo',(512,512))]:
         loaded=Image.open(io.BytesIO(base64.b64decode(card[key].split(',')[1])))
         assert loaded.size==expected
+        if key=='company_logo':
+            bounds=loaded.convert('RGBA').getchannel('A').getbbox()
+            assert bounds[2]-bounds[0]==512 and 169<=bounds[3]-bounds[1]<=172
     for key,size in [('profile_image',(127,128)),('cover_image',(319,180)),('company_logo',(63,64)),('cover_image',(2200,2000))]:
         assert client.post('/api/cards',json={'name':'Invalid image',key:image_data(size)}).status_code==422
 

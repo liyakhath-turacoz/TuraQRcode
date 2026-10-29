@@ -46,7 +46,9 @@ def normalize_card_image(value, field='profile_image'):
             if image.width<minimum[0] or image.height<minimum[1]:
                 raise ValueError(f'Use an image at least {minimum[0]} × {minimum[1]} pixels.')
             if field=='company_logo':
-                image.thumbnail(target,Image.Resampling.LANCZOS)
+                mark=ImageOps.contain(image,target,method=Image.Resampling.LANCZOS)
+                image=Image.new('RGBA',target,(255,255,255,0))
+                image.alpha_composite(mark,((target[0]-mark.width)//2,(target[1]-mark.height)//2))
             else:
                 image=ImageOps.fit(image,target,method=Image.Resampling.LANCZOS)
             for quality in (88,75,60):

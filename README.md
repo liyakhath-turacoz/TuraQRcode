@@ -358,9 +358,9 @@ Bio, experience highlights, and custom profile sections have inline tools for bo
 |---|---|---|
 | Profile photo | 128 × 128 px | 512 × 512 px, square crop |
 | Cover photo | 320 × 180 px | 1,280 × 720 px, 16:9 crop |
-| Company logo | 64 × 64 px | Fits within 512 × 512 px; proportions preserved |
+| Company logo | 64 × 64 px | 512 × 512 px transparent canvas; choose Fit entire logo or Crop to square |
 
-Choose PNG, JPG, or WebP up to 8 MB, 8,000 px per side, and 30 megapixels in the editor. The editor prepares a smaller image before saving; API submissions must be under 500 KB and four megapixels. Zoom and horizontal/vertical positioning appear beside the uploaded portrait/cover. Saved images can be cropped again; re-upload the original to recover areas outside a previously saved crop. The server validates dimensions and image contents independently.
+Choose PNG, JPG, or WebP up to 8 MB, 8,000 px per side, and 30 megapixels in the editor. Each slot shows the saved width and height, accepted minimum dimensions, upload limits, and original dimensions after loading. The editor prepares a smaller image before saving; API submissions must be under 500 KB and four megapixels. All three image slots have zoom, horizontal/vertical positioning, and a labeled Reset crop control. Logos can fit inside the square canvas without clipping or crop to fill it. Saved images can be cropped again with Adjust crop; re-upload the original to recover areas outside a previously saved crop. Invalid replacement files preserve the current image. The server validates dimensions and image contents independently.
 
 YouTube, Instagram, Facebook, and LinkedIn QR fields accept an account handle, a supported platform address without `https://`, or a full profile/post URL. YouTube also accepts channel IDs and legacy channel paths; LinkedIn accepts `in/name` and `company/name`. Business-card social fields accept handles for all ten supported platforms; WhatsApp accepts a country-code phone number. A display name containing spaces is not a unique account handle, so it requires a profile URL. Account existence/privacy is controlled by the destination platform.
 
