@@ -9,12 +9,12 @@ Executed on **29 October 2026** in `E:\TuraQRcode`.
 | Application layout | `backend`, `admin`, and `frontend` are independently runnable/buildable application folders. Subsequently consolidated under one root Git repository for the requested GitHub remote, with root README/deployment documentation. |
 | Customer production build | Passed: TypeScript and Vite |
 | Administrator production build | Passed: TypeScript and Vite |
-| Backend/PostgreSQL test suite | 51 tests passed against isolated, genuine local PostgreSQL |
-| Browser end-to-end suite | 12 scenarios passed in Chromium; 390 px mobile and 1280 px desktop coverage |
+| Backend/PostgreSQL test suite | 96 tests passed against isolated, genuine local PostgreSQL |
+| Browser end-to-end suite | 15 scenarios passed in Chromium; 390 px mobile and 1280 px desktop coverage |
 | Automated accessibility | No violations for the selected WCAG A/AA checks on public, account, workspace, and administrator activity pages |
-| QR decoding | All seven content types, all three patterns with logos/frames, decoded with ZXing-C++ |
+| QR decoding | All seven content types, seven patterns with logos/frames, all 21 pattern/corner combinations, decoded with ZXing-C++ |
 | Supabase connection | Passed with client-to-Supabase TLS verified through libpq |
-| Supabase migrations | Revision `8904875a8d26` applied; eight application tables plus the Alembic version table |
+| Supabase migrations | Revision `20261029_default_projects` applied; eight application tables plus the Alembic version table |
 | Supabase data isolation | Private `tura` schema; RLS enabled; Supabase anonymous/authenticated API roles denied schema access |
 | Live persistence smoke | Registration, sessions, QR creation/read-back, redirect, scan reporting, downloads, role restriction, and deletion passed |
 | Initial administrator | Exists server-side, Argon2id hash verified, administrator role verified, mandatory password change verified |
@@ -36,10 +36,12 @@ The live smoke account and its data were removed after testing. The real Supabas
 | QR content | URL, exact plain text, email, telephone, SMS, Wi-Fi escaping/whitespace, UTF-8 SSID length, vCard |
 | QR appearance | Colors/contrast, square/rounded/dot patterns, raster logo validation/normalization, frame; actual PNG decoding |
 | Export formats | PNG, SVG, PDF signatures, browser downloads, ZIP content, A4 print PDF |
-| Link controls | Pause/reactivate, expiration/clearing expiry, password form/wrong password/unlock/removal, mobile/desktop rule |
+| Link controls | Pause/reactivate, expiry, password form/retry/unlock/removal; actual Chromium form navigation to another origin for signed-in desktop and anonymous mobile visitors; 303 GET redirect; disconnected-body handling |
 | Analytics | Distinct scan/click channels, counts, UTC daily aggregates, device categories, referrer-host redaction, CSV, top codes |
-| Saved-code organization | Search, filters, pagination, alphabetical sort, deletion, safe project removal/unassignment |
-| Business cards | Create/edit/delete, escaped public HTML, public profile, vCard, downloadable QR; browser flow verified |
+| Saved-code organization | Search, filters, pagination, alphabetical sort, deletion, default assignment and safe reassignment on project removal |
+| Barcodes | All five standards saved/exported and independently decoded; EAN/UPC check digits validated; invalid standards/values rejected; browser generator/save/export covered |
+| Default projects | Registration and migration create defaults, create/bulk/edit assign automatically, default deletion blocked, custom deletion reassigns |
+| Business cards | Any brand color with readable public profile and decodable QR; create/edit/delete, escaped public HTML, public profile, vCard, downloadable QR; browser flow verified |
 | Bulk creation | CSV parsing/column mapping in browser; validation, alias conflicts, partial success without transaction corruption, ZIP/print |
 | Administration | Counts, account search, suspension/session revocation, public-content suspension, restoration, code moderation, confidential recovery links, audit history |
 | Request protection | Origin checks, login rate limiting, bounded mutation bodies, no password echo in validation errors |
@@ -79,3 +81,13 @@ Destructive tests refuse a non-loopback database. Pytest uses `tura_test`; brows
 - **Policy text:** Terms and Privacy pages are supplied as initial product content and should reflect Turacoz’s final operational practices before public launch.
 
 One upstream deprecation warning concerns Starlette’s test client using `httpx`; all tests pass. It does not affect the running application.
+
+## Blue design and generator expansion
+
+The current run includes real Supabase migration/backfill verification: before/after counts for users, codes, and business cards matched; every existing account has a default project and no code remains unassigned. Existing custom project assignments and the real administrator password/state were preserved. The live smoke script verifies current Alembic head, default-project protection, protected unlock, barcode storage/exports, ordinary CRUD/analytics, and removes only its temporary account.
+
+The 15 browser scenarios include expanded public/account/workspace accessibility checks, safe color corrections, new pattern/corner/frame controls, mobile design layout, EAN check-digit validation, barcode exports/saving, UTM-tagged short links, and desktop/mobile password navigation. Screenshots include `design-desktop.png`, `design-mobile.png`, and `barcode-desktop.png` in addition to the existing page captures.
+
+Firecrawl captured both reference pages and screenshots. Chrome DevTools MCP captured QRStuff and the updated local pages; its Bitly navigation timed out, with Firecrawl providing that page?s evidence. Reference capture files and tools remain ignored under `backend/.local`. No reference-site login was required for the public-page review. See the design-system reference review for feature scope.
+
+The running development setup was also checked at customer port 5173, administrator port 5174, and API port 8000 with the project virtual environment: QR preview, barcode preview, Supabase readiness, and the administrator sign-in screen passed with no browser JavaScript exceptions. The combined launcher now re-executes inside the project venv when available, preventing accidental use of missing global Python dependencies.

@@ -4,12 +4,14 @@ import re
 import secrets
 import zipfile
 from datetime import timedelta, date
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+from starlette.requests import ClientDisconnect
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from html import escape
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select, func, desc, Date, cast
+from sqlalchemy import select, func, desc, Date, cast, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import settings
@@ -17,7 +19,8 @@ from .db import get_db
 from .models import Code, Project, Event, User, now
 from .schemas import CodeCreate, CodeUpdate, Preview, ProjectInput, validate_content, valid_url
 from .security import ready_user, passwords, verify, throttle
-from .qr import payload, render
+from .qr import payload, render_code
+from .projects import default_project
 
 router=APIRouter(tags=['QR codes and links'])
 
@@ -43,9 +46,10 @@ def code_json(db,code,count=None):
 
 def add_code(db,data,user):
     if data.project_id: owned(db,Project,data.project_id,user)
+    project_id = data.project_id or default_project(db,user.id).id
     slug=data.alias or secrets.token_urlsafe(7)
     if db.scalar(select(Code.id).where(Code.slug==slug)): raise HTTPException(409,'This custom alias is already in use. Please choose another.')
-    code=Code(user_id=user.id,name=data.name,kind=data.kind,mode=data.mode,slug=slug,content=data.content,design=data.design.model_dump(),project_id=data.project_id,expires_at=data.expires_at,mobile_url=data.mobile_url,password_hash=passwords.hash(data.password) if data.password else None)
+    code=Code(user_id=user.id,name=data.name,kind=data.kind,mode=data.mode,slug=slug,content=data.content,design=data.design.model_dump(),project_id=project_id,expires_at=data.expires_at,mobile_url=data.mobile_url,password_hash=passwords.hash(data.password) if data.password else None)
     db.add(code); db.flush()
     return code
 
@@ -53,15 +57,16 @@ def add_code(db,data,user):
 @router.post('/api/qr/preview')
 def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|svg|pdf)$')):
     throttle(request,'preview',120,60)
-    raw,mime=render(payload(data.kind,data.content),data.design.model_dump(),format)
+    raw,mime=render_code(data.kind,data.content,data.design.model_dump(),format)
     return Response(raw,media_type=mime,headers={'Cache-Control':'no-store'})
 
 
 @router.get('/api/codes')
-def list_codes(q:str=Query('',max_length=120),kind:str=Query('',max_length=20),status:str=Query('',pattern='^(active|paused|expired)?$'),project_id:str=Query('',max_length=36),sort:str=Query('newest',pattern='^(newest|oldest|name)$'),page:int=Query(1,ge=1),limit:int=Query(20,ge=1,le=100),user:User=Depends(ready_user),db:Session=Depends(get_db)):
+def list_codes(q:str=Query('',max_length=120),kind:str=Query('',max_length=20),mode:str=Query('',pattern='^(static|dynamic|short)?$'),status:str=Query('',pattern='^(active|paused|expired)?$'),project_id:str=Query('',max_length=36),sort:str=Query('newest',pattern='^(newest|oldest|name)$'),page:int=Query(1,ge=1),limit:int=Query(20,ge=1,le=100),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     query=select(Code).where(Code.user_id==user.id)
     if q: query=query.where(Code.name.ilike('%'+q+'%'))
     if kind: query=query.where(Code.kind==kind)
+    if mode: query=query.where(Code.mode==mode)
     if project_id: query=query.where(Code.project_id==project_id)
     if status=='active': query=query.where(Code.is_active.is_(True), (Code.expires_at.is_(None)) | (Code.expires_at > now()))
     if status=='paused': query=query.where(Code.is_active.is_(False))
@@ -121,6 +126,8 @@ def update_code(code_id:str,data:CodeUpdate,user:User=Depends(ready_user),db:Ses
         try: values['content']=validate_content(code.kind,values['content'])
         except ValueError as e: raise HTTPException(422,str(e))
     if values.get('project_id'): owned(db,Project,values['project_id'],user)
+    if 'project_id' in values and not values['project_id']:
+        values['project_id']=default_project(db,user.id).id
     if values.get('mobile_url'):
         try: valid_url(values['mobile_url'])
         except ValueError as e: raise HTTPException(422,str(e))
@@ -142,7 +149,7 @@ def delete_code(code_id:str,user:User=Depends(ready_user),db:Session=Depends(get
 @router.get('/api/codes/{code_id}/download')
 def download_code(code_id:str,format:str=Query('png',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=2048),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     code=owned(db,Code,code_id,user)
-    raw,mime=render(code_payload(code),code.design,format,size)
+    raw,mime=render_code(code.kind,code.content,code.design,format,size,data=code_payload(code))
     name=re.sub(r'[^A-Za-z0-9_-]','-',code.name)[:70] or 'qrcode'
     return Response(raw,media_type=mime,headers={'Content-Disposition':f'attachment; filename="{name}.{format}"'})
 
@@ -158,7 +165,7 @@ def export_bundle(data:ExportInput,user:User=Depends(ready_user),db:Session=Depe
         rows=[]
         for index,item_id in enumerate(dict.fromkeys(data.ids),1):
             code=owned(db,Code,item_id,user)
-            image,_=render(code_payload(code),code.design,'png')
+            image,_=render_code(code.kind,code.content,code.design,'png',data=code_payload(code))
             bundle.writestr(f'{index:03d}-{code.slug}.png',image)
             rows.append([code.name,code.short_url if hasattr(code,'short_url') else settings.public_base_url.rstrip('/')+'/r/'+code.slug if code.mode!='static' else '',code.mode])
         csv_file=io.StringIO(); writer=csv.writer(csv_file); writer.writerow(['name','short_url','mode'])
@@ -181,7 +188,7 @@ def print_export(data:ExportInput,user:User=Depends(ready_user),db:Session=Depen
     for i,item_id in enumerate(data.ids):
         if i and i%9==0: pdf.showPage()
         code=owned(db,Code,item_id,user)
-        raw,_=render(code_payload(code),code.design,'png',768)
+        raw,_=render_code(code.kind,code.content,code.design,'png',768,data=code_payload(code))
         x=24+(i%3)*184; y=A4[1]-250-(i%9//3)*260
         pdf.drawImage(ImageReader(io.BytesIO(raw)),x,y,width=172,height=200,preserveAspectRatio=True,anchor='c')
         # WinAnsi fonts cannot represent all Unicode labels; QR data remains intact.
@@ -192,14 +199,14 @@ def print_export(data:ExportInput,user:User=Depends(ready_user),db:Session=Depen
 
 @router.get('/api/projects')
 def projects(user:User=Depends(ready_user),db:Session=Depends(get_db)):
-    rows=db.execute(select(Project,func.count(Code.id)).outerjoin(Code,Code.project_id==Project.id).where(Project.user_id==user.id).group_by(Project.id).order_by(Project.created_at.desc())).all()
-    return [{'id':p.id,'name':p.name,'color':p.color,'total_codes':count,'created_at':p.created_at} for p,count in rows]
+    rows=db.execute(select(Project,func.count(Code.id)).outerjoin(Code,Code.project_id==Project.id).where(Project.user_id==user.id).group_by(Project.id).order_by(Project.is_default.desc(),Project.created_at.desc())).all()
+    return [{'id':p.id,'name':p.name,'color':p.color,'is_default':p.is_default,'total_codes':count,'created_at':p.created_at} for p,count in rows]
 
 
 @router.post('/api/projects',status_code=201)
 def create_project(data:ProjectInput,user:User=Depends(ready_user),db:Session=Depends(get_db)):
     p=Project(user_id=user.id,**data.model_dump()); db.add(p); db.commit()
-    return {'id':p.id,'name':p.name,'color':p.color,'total_codes':0,'created_at':p.created_at}
+    return {'id':p.id,'name':p.name,'color':p.color,'is_default':p.is_default,'total_codes':0,'created_at':p.created_at}
 
 
 @router.patch('/api/projects/{project_id}')
@@ -211,7 +218,11 @@ def update_project(project_id:str,data:ProjectInput,user:User=Depends(ready_user
 
 @router.delete('/api/projects/{project_id}',status_code=204)
 def delete_project(project_id:str,user:User=Depends(ready_user),db:Session=Depends(get_db)):
-    db.delete(owned(db,Project,project_id,user)); db.commit()
+    project=owned(db,Project,project_id,user)
+    if project.is_default: raise HTTPException(400,'Your default project cannot be deleted. You can rename it instead.')
+    target=default_project(db,user.id)
+    db.execute(update(Code).where(Code.user_id==user.id,Code.project_id==project.id).values(project_id=target.id))
+    db.delete(project); db.commit()
 
 
 def analytics_data(db,user,days,code_id=None):
@@ -263,7 +274,7 @@ def analytics_export(days:int=Query(30,ge=1,le=365),code_id:str|None=None,user:U
 
 
 def html_page(title,body):
-    return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+' · TuraQRcode</title><style>body{font:16px system-ui;background:#f2f7f5;color:#12352f;margin:0;padding:40px 20px}main{max-width:420px;margin:8vh auto;background:white;padding:36px;border:1px solid #dce6e1;border-radius:20px}label{display:block;margin:20px 0 8px}input,button{box-sizing:border-box;width:100%;padding:14px;font:inherit;border:1px solid #b4c6bd;border-radius:8px}button,a.action{background:#087e70;color:white;border:0;margin-top:16px;cursor:pointer}a{color:#087e70}small{display:block;color:#53685e;margin-top:28px}</style><main>'+body+'<small>TuraQRcode by Turacoz</small></main></html>'
+    return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(title)+' · TuraQRcode</title><style>body{font:16px system-ui;background:#f3f6fc;color:#163b75;margin:0;padding:40px 20px}main{max-width:420px;margin:8vh auto;background:white;padding:36px;border:1px solid #dce5f3;border-radius:20px}label{display:block;margin:20px 0 8px}input,button{box-sizing:border-box;width:100%;padding:14px;font:inherit;border:1px solid #afc1db;border-radius:8px}button,a.action{background:#2563eb;color:white;border:0;margin-top:16px;cursor:pointer}a{color:#2563eb}small{display:block;color:#52657e;margin-top:28px}</style><main>'+body+'<small>TuraQRcode by Turacoz</small></main></html>'
 
 
 def public_code(db,slug):
@@ -275,14 +286,23 @@ def public_code(db,slug):
     return code
 
 
-def track_redirect(db,code,request,via):
+def track_redirect(db,code,request,via,status_code=302):
     ua=request.headers.get('user-agent','').lower()
     mobile=any(x in ua for x in ('mobile','android','iphone','ipad'))
     try: ref=(urlsplit(request.headers.get('referer','')).hostname or 'Direct')[:253]
     except ValueError: ref='Direct'
     db.add(Event(code_id=code.id,channel='qr' if via=='qr' else 'link',device='Mobile' if mobile else 'Desktop',referrer=ref))
     db.commit()
-    return RedirectResponse(code.mobile_url if mobile and code.mobile_url else code.content['url'],status_code=302,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+    return RedirectResponse(code.mobile_url if mobile and code.mobile_url else code.content['url'],status_code=status_code,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+
+
+def password_page(slug,via,error='',status_code=200):
+    action='/r/'+escape(slug,quote=True)+('?via=qr' if via=='qr' else '')
+    notice='<p role="alert">'+escape(error)+'</p>' if error else '<p>Enter the access password to continue.</p>'
+    return HTMLResponse(html_page('Protected link','<h1>This link is protected</h1>'+notice+
+        '<form method="post" action="'+action+'"><label for="password">Access password</label>'
+        '<input id="password" name="password" type="password" required maxlength="128" autocomplete="current-password" autofocus>'
+        '<button type="submit">Continue</button></form>'),status_code=status_code)
 
 
 @router.get('/r/{slug}')
@@ -290,17 +310,33 @@ def redirect(slug:str,request:Request,via:str='',db:Session=Depends(get_db)):
     throttle(request,'redirect',120,60)
     code=public_code(db,slug)
     if code.password_hash:
-        suffix='?via=qr' if via=='qr' else ''
-        return HTMLResponse(html_page('Protected link','<h1>This link is protected</h1><p>Enter the access password to continue.</p><form method="post" action="/r/'+escape(slug,quote=True)+suffix+'"><label for="password">Access password</label><input id="password" name="password" type="password" required maxlength="128" autocomplete="current-password"><button>Continue</button></form>'))
+        return password_page(slug,via)
     return track_redirect(db,code,request,via)
 
 
 @router.post('/r/{slug}')
 async def unlock(slug:str,request:Request,via:str='',db:Session=Depends(get_db)):
     throttle(request,'unlock',10,300)
-    code=public_code(db,slug)
-    form=await request.form()
-    value=str(form.get('password',''))[:128]
-    if code.password_hash and not verify(value,code.password_hash):
-        return HTMLResponse(html_page('Incorrect password','<h1>That password is incorrect</h1><p>Please return to the link and try again.</p><a href="/r/'+escape(slug,quote=True)+('?via=qr' if via=='qr' else '')+'">Try again</a>'),status_code=403)
-    return track_redirect(db,code,request,via)
+    # Consume the small form before opening a database transaction. An aborted
+    # mobile request is expected network behavior, not an application failure.
+    if request.headers.get('content-type','').split(';')[0].strip()!='application/x-www-form-urlencoded':
+        return password_page(slug,via,'Please enter your password using this form.',415)
+    try:
+        body=bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body)>2048: return password_page(slug,via,'Please use a password of 128 characters or fewer.',413)
+        fields=parse_qs(body.decode('utf-8'),max_num_fields=2,keep_blank_values=True,errors='strict')
+        values=fields.get('password',[])
+        if len(values)!=1 or len(values[0])>128: return password_page(slug,via,'Please enter a valid password.',400)
+    except ClientDisconnect:
+        return password_page(slug,via,'The connection was interrupted. Please try again.',408)
+    except (UnicodeError,ValueError):
+        return password_page(slug,via,'Please enter a valid password.',400)
+    def complete():
+        code=public_code(db,slug)
+        if code.password_hash and not verify(values[0],code.password_hash):
+            return password_page(slug,via,'That password is incorrect. Please try again.',403)
+        # See Other explicitly changes the form POST into a destination GET.
+        return track_redirect(db,code,request,via,status_code=303)
+    return await run_in_threadpool(complete)

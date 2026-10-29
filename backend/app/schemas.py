@@ -76,38 +76,56 @@ class Profile(Input):
     name: str = Field(min_length=2, max_length=100)
 
 
+def luminance(color):
+    rgb=[int(color[i:i+2],16)/255 for i in (1,3,5)]
+    return sum((v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4)*w for v,w in zip(rgb,(.2126,.7152,.0722)))
+
+
+def readable_ink(color):
+    return '#0f172a' if luminance(color)>.179 else '#ffffff'
+
+
 class Design(Input):
-    foreground: str = '#12352f'
+    foreground: str = '#163b75'
     background: str = '#ffffff'
-    pattern: Literal['square', 'rounded', 'dots'] = 'square'
-    frame: Literal['none', 'scan'] = 'none'
+    pattern: Literal['square', 'rounded', 'dots', 'diamond', 'soft', 'horizontal', 'vertical'] = 'square'
+    eye_style: Literal['square', 'rounded', 'circle'] = 'square'
+    eye_color: str | None = None
+    frame: Literal['none', 'scan', 'banner', 'border'] = 'none'
+    frame_label: str = Field(default='SCAN ME',min_length=1,max_length=24)
     logo: str | None = Field(default=None, max_length=700000)
 
-    @field_validator('foreground', 'background')
+    @field_validator('foreground', 'background', 'eye_color')
     @classmethod
     def color(cls, value):
+        if value is None: return value
         if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
             raise ValueError('Choose a valid color.')
         return value.lower()
 
     @model_validator(mode='after')
     def contrast(self):
-        def luminance(color):
-            rgb = [int(color[i:i+2], 16) / 255 for i in (1, 3, 5)]
-            return sum((v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4)*w for v,w in zip(rgb, (.2126,.7152,.0722)))
         fg, bg = luminance(self.foreground), luminance(self.background)
         if bg <= fg or (bg+.05)/(fg+.05) < 4.5:
             raise ValueError('Use a dark QR color and light background with stronger contrast.')
+        eye=luminance(self.eye_color or self.foreground)
+        if bg<=eye or (bg+.05)/(eye+.05)<4.5:
+            raise ValueError('Choose a darker eye color for reliable scanning.')
+        if not self.frame_label.isascii() or any(ord(c)<32 for c in self.frame_label):
+            raise ValueError('Use printable English letters, numbers, or punctuation for the frame label.')
         if self.logo:
             from .qr import normalize_logo
             self.logo = normalize_logo(self.logo)
         return self
 
 
-Kind = Literal['url', 'text', 'email', 'phone', 'sms', 'wifi', 'vcard']
+Kind = Literal['url', 'text', 'email', 'phone', 'sms', 'wifi', 'vcard', 'barcode']
 
 
 def validate_content(kind, content):
+    if kind=='barcode':
+        from .barcodes import validate_barcode
+        return validate_barcode(content)
     allowed = {
         'url': {'url'}, 'text': {'text'}, 'email': {'email','subject','body'},
         'phone': {'phone'}, 'sms': {'phone','message'},
@@ -165,7 +183,7 @@ class CodeCreate(Input):
             raise ValueError('Editable codes and short links require a website address.')
         if self.mode == 'static' and (self.expires_at or self.password or self.mobile_url or self.alias):
             raise ValueError('Link controls are available for editable codes and short links.')
-        if self.mode == 'static':
+        if self.mode == 'static' and self.kind!='barcode':
             from .qr import payload, qr_matrix
             qr_matrix(payload(self.kind,self.content))
         if self.mobile_url:
@@ -199,7 +217,7 @@ class Preview(Input):
 
 class ProjectInput(Input):
     name: str = Field(min_length=1, max_length=100)
-    color: str = Field(default='#087e70', pattern=r'^#[0-9a-fA-F]{6}$')
+    color: str = Field(default='#2563eb', pattern=r'^#[0-9a-fA-F]{6}$')
 
 
 class CardInput(Input):
@@ -209,12 +227,11 @@ class CardInput(Input):
     email: str = Field(default='', max_length=254)
     phone: str = Field(default='', max_length=30)
     website: str = Field(default='', max_length=2048)
-    color: str = Field(default='#087e70', pattern=r'^#[0-9a-fA-F]{6}$')
+    color: str = Field(default='#2563eb', pattern=r'^#[0-9a-fA-F]{6}$')
 
     @model_validator(mode='after')
     def card_data(self):
         validate_content('vcard', self.model_dump(exclude={'color'}))
-        Design(foreground=self.color)
         return self
 
 

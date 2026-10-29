@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import settings
+from .projects import default_project
 from .db import get_db
 from .models import User, ResetToken, AuthSession, now
 from .schemas import Register, Login, PasswordChange, ForgotPassword, ResetPassword, Profile, POLICY_VERSION
@@ -53,6 +54,7 @@ def register(data:Register,request:Request,response:Response,db:Session=Depends(
     try: db.flush()
     except IntegrityError:
         db.rollback(); raise HTTPException(409,'An account with this email already exists. Please sign in.')
+    default_project(db,user.id)
     audit(db,user,'account.registered',email)
     create_session(db,user,response)
     return public_user(user)

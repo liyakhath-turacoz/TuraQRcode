@@ -22,9 +22,9 @@ This checks TypeScript and produces `dist`. Serve it with an SPA fallback and pr
 
 ## Pages
 
-Public: `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/terms`, `/privacy`.
+Public: `/`, `/barcode-generator`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/terms`, `/privacy`.
 
-Workspace: `/app`, `/app/codes`, `/app/create`, `/app/codes/:id`, `/app/analytics`, `/app/projects`, `/app/business-cards`, `/app/bulk`, `/app/settings`. Temporary-password accounts go to `/change-password` before entering their workspace.
+Workspace: `/app`, `/app/codes`, `/app/create`, `/app/links`, `/app/links/new`, `/app/barcodes`, `/app/barcodes/new`, `/app/codes/:id`, `/app/analytics`, `/app/projects`, `/app/business-cards`, `/app/bulk`, `/app/settings`. Temporary-password accounts go to `/change-password` before entering their workspace.
 
 ## Browser tests
 

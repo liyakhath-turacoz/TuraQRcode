@@ -1,6 +1,6 @@
 # TuraQRcode
 
-**TuraQRcode by Turacoz** is a QR-code and short-link platform for creating, customizing, organizing, sharing, and measuring connections. QRStuff is a feature reference only; this application has its own interface and branding.
+**TuraQRcode by Turacoz** is a QR-code, barcode, and short-link platform for creating, customizing, organizing, sharing, and measuring connections. QRStuff and Bitly are feature references; this application has its own interface and branding.
 
 The repository contains three applications that can be installed, run, and built independently:
 
@@ -83,7 +83,7 @@ cd E:\TuraQRcode\backend
 .venv\Scripts\python.exe scripts\dev.py
 ```
 
-This starts the backend, customer app, and administrator app. Ctrl+C stops them. The local PostgreSQL helper is not needed when using Supabase normally.
+This starts the backend, customer app, and administrator app. The launcher uses the project virtual environment when it exists, even if invoked through a global Python interpreter. Ctrl+C stops them. The local PostgreSQL helper is not needed when using Supabase normally.
 
 ## Complete project structure
 
@@ -149,7 +149,7 @@ TuraQRcode/
 │   │   ├── styles.css
 │   │   ├── accessibility.css
 │   │   ├── shared/                  This app's API, account, UI, type/style primitives
-│   │   ├── components/              Layout, CodeBuilder, QR thumbnail, charts
+│   │   ├── components/              Layout, QR/barcode builders, safe colors, campaign tags, charts
 │   │   └── pages/                   Public/legal, codes, organization, bulk, settings
 │   ├── design-system/turaqrcode/     Visual guidance and product reference plan
 │   ├── playwright.config.ts
@@ -189,17 +189,18 @@ The customer and administrator apps keep their own UI primitives so each builds 
 |---|---|
 | Public generator | Account-free static QR preview and PNG/SVG/PDF downloads |
 | QR content types | Website URL, plain text, email (recipient/subject/body), telephone, SMS (number/message), Wi-Fi (SSID/password/security/hidden), and vCard contact details |
-| QR modes | Static codes for all seven types; editable URL QR codes and trackable short links |
+| QR modes | Static QR codes for all seven QR types; editable URL QR codes and trackable short links; static linear barcodes |
 | Design | Dark foreground/light background with contrast checks; classic, rounded, or dot pattern; optional “Scan me” frame; raster PNG/JPG/WebP logo, maximum 500 KB and 4 megapixels |
+| Barcodes | Public generator and saved-code management for Code 128, Code 39, EAN-13, EAN-8, UPC-A; checksum calculation/verification for EAN/UPC; optional value caption; contrasting colors; PNG/SVG/PDF and saved bundle/print exports |
 | Exports | PNG (256–2048 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
-| Short links | Generated or custom alias; custom aliases use 3–64 letters, numbers, hyphens, or underscores and must be globally unique |
+| Short links | Dedicated creation/listing pages, optional UTM source/medium/campaign builder, generated or custom alias; custom aliases use 3–64 letters, numbers, hyphens, or underscores and must be globally unique |
 | Editable destinations | Update a managed URL without changing its short address or QR payload |
 | Link controls | Pause/reactivate, optional expiry, optional access password, optional alternate mobile destination |
-| Saved codes | List, search by name, filter by content type/status/project, sort by name/newest/oldest, paginate, edit, delete, select for export |
+| Saved codes | List, search by name, filter by content type/mode/status/project, sort by name/newest/oldest, paginate, edit, delete, select for export |
 | Overview | Code/active-code counts, clicks/scans, 14-day activity, top connections, devices, recent codes, quick-create shortcuts |
 | Analytics | Code/date-range filters; request totals, link clicks, QR scans, UTC daily trends, device categories, referrer hosts, latest 25 requests, CSV export up to 50,000 rows |
-| Projects | Create, rename, color, delete, assign codes, filter by project; deleting a project leaves its codes unassigned |
-| Business cards | Name, title, company, email, phone, one website/social-profile URL, preset card color; create/edit/delete, public profile, vCard download, QR export, copy address |
+| Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Existing unassigned codes are migrated. Rename/color projects; deletion moves codes to the default project, which cannot be deleted |
+| Business cards | Name, title, company, email, phone, one website/social-profile URL, any custom card color with automatic readable text and a contrasting exported QR; create/edit/delete, public profile, vCard download, QR export, copy address |
 | Bulk UI | CSV upload or paste, column mapping, URL or text batches, editable/static/short-link selection as applicable, row-level results, ZIP/print export; maximum 100 rows and 100 KB CSV input |
 | Bulk API | Up to 100 supported code objects per request; validation and alias conflicts reported per row while valid rows are saved |
 | Registration | Name/email/password; required combined Terms & Conditions and Privacy Policy checkbox; consent timestamp and policy version recorded |
@@ -225,6 +226,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Route | Page | Access |
 |---|---|---|
 | `/` | Product home and public static QR generator | Public |
+| `/barcode-generator` | Public barcode generator and exports | Public |
 | `/login` | Sign in | Public/account access |
 | `/register` | Sign up and required legal acceptance | Public/account access |
 | `/forgot-password` | Recovery instructions | Public/account access |
@@ -235,6 +237,10 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | `/app` | Overview/dashboard | Signed-in account with password requirement satisfied |
 | `/app/codes` | Saved links and QR codes | Signed-in owner |
 | `/app/create` | Create QR code/short link | Signed-in account |
+| `/app/links` | Saved short links | Signed-in owner |
+| `/app/links/new` | Short-link creator, UTM tags, link controls | Signed-in account |
+| `/app/barcodes` | Saved barcodes | Signed-in owner |
+| `/app/barcodes/new` | Barcode creator | Signed-in account |
 | `/app/codes/:id` | Code details and editor | Owner |
 | `/app/analytics` | Analytics and CSV reporting | Signed-in owner |
 | `/app/projects` | Projects/campaigns | Signed-in owner |
@@ -283,7 +289,7 @@ Each app creates its own `dist`. Production serves these files with Nginx and ro
 
 ## Tests and verification
 
-The previously executed baseline is **51 backend tests, 12 Chromium browser scenarios, successful builds for both React applications, and no known vulnerabilities in the dependency audits**. Live Supabase checks covered TLS, migrations, administrator state, temporary-account CRUD, redirects, analytics, downloads, authorization, and cleanup. See [the verification report](backend/docs/VERIFICATION.md) for exact coverage and limits.
+The current verification covers **96 backend tests, 15 Chromium browser scenarios, successful builds for both React applications, and no known vulnerabilities in the dependency audits**. Live Supabase checks covered TLS, migrations, administrator state, temporary-account CRUD, default projects, protected unlocks, barcode exports, redirects, analytics, downloads, authorization, and cleanup. See [the verification report](backend/docs/VERIFICATION.md) for exact coverage and limits.
 
 To reproduce tests on the Windows development environment, first start genuine isolated local PostgreSQL in a separate terminal:
 
@@ -314,3 +320,11 @@ Destructive test launchers guard the loopback hostname and dedicated database na
 Commit source, package manifests, `package-lock.json` files, Python requirement files, migrations, tests, documentation, and safe `.env.example` templates. Do not commit actual `.env` files, database/SMTP/bootstrap credentials, `node_modules`, `.venv`, `.local`, `dist`, database backups, or test reports.
 
 After cloning or updating a server, recreate dependencies with `npm ci` and `python -m pip install -r requirements.txt`, create the private server `.env`, apply migrations, build both frontends, and restart the API. [DEPLOYMENT.md](DEPLOYMENT.md) explains exactly which values/files change, which services restart, how to publish new static builds, and how to preserve secrets during updates.
+
+## Blue design and generator update ? 29 October 2026
+
+The browser suite exercises actual protected-form navigation to a different origin for desktop and mobile visitors, including wrong-password retry. Interrupted form requests are handled without an unhandled `ClientDisconnect`; successful unlocks use an HTTP 303 destination GET. The public password page permits HTTP(S) redirect destinations in its form policy while retaining other page restrictions.
+
+The Supabase migration `20261029_default_projects` was applied and verified against existing record counts. It preserves custom project assignments, creates a default for existing users, and assigns previously ungrouped codes. New deployments run the usual migration command; no additional environment keys or research-service credentials are needed.
+
+Reference research and feature decisions: [reference review](frontend/design-system/turaqrcode/REFERENCE_REVIEW.md). Firecrawl/Chrome capture files and local research tooling remain ignored under `backend/.local`; they are not product runtime dependencies.

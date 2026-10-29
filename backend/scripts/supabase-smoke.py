@@ -12,6 +12,8 @@ from app.db import engine
 from app.models import User,Audit,Code,Event
 from app.main import app
 from app.security import passwords
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 def run():
     email='smoke-'+uuid4().hex+'@example.com';user_id=None
@@ -24,14 +26,16 @@ def run():
                 # the actual encrypted connection from this client to Supabase.
                 assert db.connection.driver_connection.pgconn.ssl_in_use
                 print('PASS encrypted PostgreSQL connection')
-            assert db.scalar(text("SELECT version_num FROM tura.alembic_version"))=='8904875a8d26'
+            head=ScriptDirectory.from_config(Config(str(Path(__file__).resolve().parents[1]/'alembic.ini'))).get_current_head()
+            assert db.scalar(text("SELECT version_num FROM tura.alembic_version"))==head
             print('PASS migrations at head')
         with Session(engine()) as db:
             admin=db.scalar(select(User).where(User.email==settings.initial_admin_email.lower()))
-            assert admin and admin.is_admin and admin.must_change_password
-            assert passwords.verify(settings.initial_admin_password,admin.password_hash)
+            assert admin and admin.is_admin
+            if admin.must_change_password:
+                assert passwords.verify(settings.initial_admin_password,admin.password_hash)
             assert admin.password_hash.startswith('$argon2id$')
-            print('PASS initial administrator hash, role, and mandatory password change')
+            print('PASS administrator hash and role; current password and first-login state preserved')
             for role in ('anon','authenticated'):
                 if db.scalar(text('SELECT EXISTS(SELECT FROM pg_roles WHERE rolname=:role)'),{'role':role}):
                     assert not db.scalar(text("SELECT has_schema_privilege(:role,'tura','USAGE')"),{'role':role})
@@ -42,9 +46,14 @@ def run():
             assert response.status_code==201
             user_id=response.json()['id']
             print('PASS live registration and session persistence')
+            projects=client.get('/api/projects').json()
+            default=next(p for p in projects if p['is_default'])
+            assert client.delete('/api/projects/'+default['id']).status_code==400
+            print('PASS live default project creation and deletion protection')
             response=client.post('/api/codes',json={'name':'Temporary connection check','content':{'url':'https://example.com/smoke-check'}})
             assert response.status_code==201
             code=response.json()
+            assert code['project_id']==default['id']
             assert client.get('/api/codes/'+code['id']).json()['name']=='Temporary connection check'
             print('PASS live QR creation and database read-back')
             response=client.get('/r/'+code['slug']+'?via=qr',follow_redirects=False)
@@ -54,6 +63,13 @@ def run():
             for fmt in ('png','svg','pdf'):
                 assert client.get('/api/codes/'+code['id']+'/download?format='+fmt).status_code==200
             print('PASS live PNG, SVG, and PDF exports')
+            protected=client.post('/api/codes',json={'name':'Temporary protected check','password':'Access123','content':{'url':'https://example.com/unlocked'}}).json()
+            response=client.post('/r/'+protected['slug'],data={'password':'Access123'},follow_redirects=False)
+            assert response.status_code==303 and response.headers['location']=='https://example.com/unlocked'
+            label=client.post('/api/codes',json={'name':'Temporary barcode check','kind':'barcode','mode':'static','content':{'format':'ean13','value':'590123412345'}}).json()
+            assert label['content']['value']=='5901234123457'
+            assert client.get('/api/codes/'+label['id']+'/download').content.startswith(b'\x89PNG')
+            print('PASS live password unlock and barcode persistence/export')
             assert client.get('/api/admin/overview').status_code==403
             print('PASS live administrator access restrictions')
             assert client.delete('/api/codes/'+code['id']).status_code==204

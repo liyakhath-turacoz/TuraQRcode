@@ -1,6 +1,6 @@
 # TuraQRcode · Backend
 
-TuraQRcode is the Turacoz QR-code and short-link platform. One root Git repository contains three independently runnable application folders: `backend`, `frontend`, and `admin`. The root also contains project documentation and Git configuration.
+TuraQRcode is the Turacoz QR-code, barcode, and short-link platform. One root Git repository contains three independently runnable application folders: `backend`, `frontend`, and `admin`. The root also contains project documentation and Git configuration.
 
 [Complete project README](../README.md) · [CloudPanel deployment and updates](../DEPLOYMENT.md)
 
@@ -31,7 +31,9 @@ After dependencies are installed in all three folders, start them together from 
 
 - Registration with recorded Terms & Conditions and Privacy Policy acceptance; sign-in, logout, profile updates, strong-password changes, session revocation, and expiring single-use recovery links.
 - Seven QR content types: URL, text, email, phone, SMS, Wi-Fi, and vCard. Editable URL QR codes and short links support custom aliases, changing destinations, expiration, access passwords, mobile destinations, and pausing.
-- Classic, rounded, and dot patterns; foreground and background colors with contrast validation; scan frames; normalized raster logos; PNG, SVG, and PDF exports.
+- Seven patterns and three corner styles; foreground, background, and eye colors with contrast validation; customizable label/border frames; normalized raster logos; PNG, SVG, and PDF exports.
+- Code 128, Code 39, EAN-13, EAN-8, and UPC-A barcode generation with validated check digits, captions, and PNG/SVG/PDF exports.
+- A default project per account, including existing users and previously unassigned codes; safe project deletion moves codes to the default.
 - Ownership-protected saved codes, search, filters, pagination, projects, business cards, bulk creation with row-level results, ZIP bundles, and A4 print sheets.
 - Scan/click request tracking, UTC daily aggregates, devices, referrer hosts, and CSV activity exports (up to 50,000 rows per export).
 - Separate administrator APIs for account suspension/restoration, managed-code moderation, recovery assistance, platform counts, and audit history.

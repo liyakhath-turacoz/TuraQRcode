@@ -1,0 +1,8 @@
+import {useState} from 'react';
+import {Field,Button} from '../shared/ui';
+
+export default function CampaignTags({url,onChange}:{url:string;onChange:(url:string)=>void}){
+ const [source,setSource]=useState('');const [medium,setMedium]=useState('');const [campaign,setCampaign]=useState('');const [notice,setNotice]=useState('');
+ function apply(){try{const destination=new URL(url);if(!['https:','http:'].includes(destination.protocol))throw new Error();for(const [key,value] of [['utm_source',source],['utm_medium',medium],['utm_campaign',campaign]])if(value.trim())destination.searchParams.set(key,value.trim());onChange(destination.toString());setNotice('Campaign tags added to your destination.');}catch{setNotice('Enter a valid website address before adding campaign tags.');}}
+ return <details className="campaign-tags"><summary>Add campaign tags <span>Optional</span></summary><p className="sublabel">Identify traffic from a campaign in your website’s analytics.</p><div className="field-grid"><Field label="Campaign source"><input value={source} onChange={e=>setSource(e.target.value)} placeholder="e.g. newsletter" maxLength={100}/></Field><Field label="Campaign medium"><input value={medium} onChange={e=>setMedium(e.target.value)} placeholder="e.g. email" maxLength={100}/></Field></div><Field label="Campaign name"><input value={campaign} onChange={e=>setCampaign(e.target.value)} placeholder="e.g. autumn_launch" maxLength={100}/></Field><Button type="button" className="secondary small" onClick={apply}>Apply campaign tags</Button>{notice&&<p role="status" className="sublabel">{notice}</p>}</details>;
+}

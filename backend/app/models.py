@@ -40,8 +40,10 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str] = mapped_column(ForeignKey('tura.users.id', ondelete='CASCADE'), index=True)
     name: Mapped[str] = mapped_column(String(100))
-    color: Mapped[str] = mapped_column(String(7), default='#087e70')
+    color: Mapped[str] = mapped_column(String(7), default='#2563eb')
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (Index('uq_projects_default_user', 'user_id', unique=True, postgresql_where=is_default.is_(True)),)
 
 
 class Code(Base):

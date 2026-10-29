@@ -20,11 +20,13 @@ def test_projects_crud_and_safe_unassignment(client,member):
     p=client.post('/api/projects',json={'name':'Launch','color':'#087568'});assert p.status_code==201
     pid=p.json()['id']
     c=client.post('/api/codes',json={'name':'Project code','project_id':pid,'content':{'url':'https://example.com'}}).json()
-    assert client.get('/api/projects').json()[0]['total_codes']==1
+    projects=client.get('/api/projects').json()
+    default=next(p for p in projects if p['is_default'])
+    assert next(p for p in projects if p['id']==pid)['total_codes']==1
     assert client.patch('/api/projects/'+pid,json={'name':'Launch 2026','color':'#193c34'}).status_code==200
     assert client.get('/api/codes?project_id='+pid).json()['total']==1
     assert client.delete('/api/projects/'+pid).status_code==204
-    assert client.get('/api/codes/'+c['id']).json()['project_id'] is None
+    assert client.get('/api/codes/'+c['id']).json()['project_id']==default['id']
     assert client.post('/api/codes',json={'name':'Missing project','project_id':pid,'content':{'url':'https://example.com'}}).status_code==404
 
 def test_business_cards_public_profile_vcard_qr_and_delete(client,member):

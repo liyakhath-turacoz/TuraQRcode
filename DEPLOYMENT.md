@@ -455,3 +455,38 @@ Database migrations may change data or remove columns. Reverting Git does not re
 - [Supabase: PostgreSQL connections](https://supabase.com/docs/guides/database/connecting-to-postgres)
 
 These platform references support the panel/DNS/TLS operations. The application-specific systemd, proxy, dependency, and update configuration above is tailored to this repository and must be validated on the target server.
+
+## 16. Deploying the blue design and generator update
+
+This release adds `python-barcode==0.16.1` and migration `20261029_default_projects`; it does not require new environment variables. Keep your existing server `.env`. Firecrawl, Scrape.do, and Chrome DevTools MCP were development research tools; their keys, packages, and capture files are not needed on CloudPanel.
+
+Follow the normal backup/update procedure above, then run these commands as the site user before restarting the service:
+
+```bash
+cd /home/tura/apps/TuraQRcode/backend
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m app.manage migrate
+.venv/bin/python -m app.manage check
+
+cd /home/tura/apps/TuraQRcode/frontend
+npm ci --include=dev
+npm run build
+
+cd /home/tura/apps/TuraQRcode/admin
+npm ci --include=dev
+npm run build
+```
+
+Publish both `dist` directories using the paths and `rsync` commands from section 8, then restart `turaqrcode` and check `/api/ready`. Do not use global Python packages for the API; systemd must use the project venv, which includes the new barcode dependency.
+
+The migration creates a default project for every existing account and assigns only codes whose project was empty. Existing named project assignments, users, codes, and business cards remain. Deleting a custom project subsequently moves its codes into the default project.
+
+After publishing, verify:
+
+1. Sign in and confirm the default project appears. Save a code without selecting a project and check its assignment.
+2. Create a password-protected editable QR, scan it on a phone, enter an incorrect password and then the correct one, and confirm destination navigation. Test the configured mobile destination as well.
+3. Open `/barcode-generator`, export an EAN-13 barcode, and confirm its check digit and scan result. Sign in and save a barcode from `/app/barcodes/new`.
+4. Create a link from `/app/links/new`, add campaign tags and an alias, copy the short URL, and confirm its destination.
+5. Change QR pattern, corner style, frame text, colors, and logo; export and scan the final image. Create a business card using a light brand color and verify readable text and its QR.
+
+The server supplies the updated Content Security Policy for protected-link forms. If a CDN or custom Nginx rule injects an additional `form-action 'self'` policy on `/r/`, remove that conflicting rule for these public password pages: Chrome can apply it to the destination after a form submission. Preserve HTTPS and the remaining security headers. Hard-refresh a previously opened password form after deploying the fix.

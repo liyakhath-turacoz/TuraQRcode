@@ -19,6 +19,12 @@ def stop(*_):
         except subprocess.TimeoutExpired: process.kill()
 
 if __name__=='__main__':
+    # A global `python scripts/dev.py` should still use installed project
+    # dependencies instead of silently starting a different API environment.
+    venv=backend/'.venv'
+    runtime=venv/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
+    if runtime.exists() and Path(sys.prefix).resolve()!=venv.resolve():
+        sys.exit(subprocess.call([str(runtime),str(Path(__file__).resolve()),*sys.argv[1:]]))
     for port in (8000,5173,5174):
         with socket.socket() as sock:
             if sock.connect_ex(('127.0.0.1',port))==0:

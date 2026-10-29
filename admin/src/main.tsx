@@ -9,6 +9,7 @@ import type {User} from './shared/types';
 import './shared/styles.css';
 import './styles.css';
 import './accessibility.css';
+import './blue-theme.css';
 type AdminUser=User&{accepted_terms_at:string|null;policy_version:string|null};
 type AdminCode={id:string;name:string;kind:string;mode:string;is_active:boolean;owner:string;created_at:string};
 type Audit={id:string;actor:string|null;action:string;target:string;created_at:string};

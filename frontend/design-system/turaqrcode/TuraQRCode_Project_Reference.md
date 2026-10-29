@@ -152,3 +152,16 @@ The seven initial content types are URL, plain text, email, telephone, SMS, Wi-F
 | Recovery email | SMTP configurable; administrator-managed confidential reset links work without email delivery |
 
 Self-service per-account domain provisioning, multiple social-profile fields, file/media hosting, GS1, billing, and external integrations are future extensions. They are not represented as working features in the interface. See `backend/docs/VERIFICATION.md` for executed checks and setup-dependent limits.
+
+## Blue UI and generator expansion ? implemented 29 October 2026
+
+- Primary blue `#2563EB`, navy text/sidebar, light canvas, improved contrast, consistent customer/admin appearance.
+- Added public `/barcode-generator` and signed-in `/app/links`, `/app/links/new`, `/app/barcodes`, `/app/barcodes/new`. The customer application now has 22 explicit routes.
+- Seven QR patterns, three corner styles, independent corner color, four presets, custom frame labels, outline/border variants, and compatible color controls. Preserve the four-module QR quiet zone, including with a border frame.
+- Five barcode standards with EAN/UPC check-digit validation, captions, PNG/SVG/PDF exports, saved management, and bundle/print support.
+- Dedicated short-link workflow includes UTM campaign tags alongside existing aliases, expiry, passwords, mobile destination, and analytics.
+- Every user receives a default project. The migration backfills existing users and unassigned codes. Deleting another project moves its contents to the default; the default can be renamed and cannot be deleted.
+- Any hex color is supported for business cards. Text automatically contrasts with the card color, and the exported QR uses a separate safe dark color when necessary.
+- Protected-form requests handle disconnected clients and use 303 navigation after unlocking; browser coverage includes desktop and mobile destinations on another origin.
+
+See [reference review](REFERENCE_REVIEW.md) for observed QRStuff/Bitly features and scope decisions. This expansion supersedes the initial three-pattern, preset-card-color, and unassigned-project descriptions above.

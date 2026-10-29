@@ -8,6 +8,7 @@ from .config import ROOT, settings
 from .db import engine
 from .models import User, Audit
 from .security import passwords
+from .projects import default_project
 
 
 def migrate():
@@ -25,6 +26,7 @@ def seed():
             raise RuntimeError('Set INITIAL_ADMIN_PASSWORD in the server environment before initialization.')
         user=User(name='Turacoz Administrator',email=email,password_hash=passwords.hash(settings.initial_admin_password),is_admin=True,must_change_password=True)
         db.add(user); db.flush()
+        default_project(db,user.id)
         db.add(Audit(actor_id=user.id,action='admin.initialized',target=email))
         db.commit()
         print('Administrator created securely. A password change is required on first sign-in.')

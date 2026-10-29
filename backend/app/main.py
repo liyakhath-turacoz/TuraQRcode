@@ -35,7 +35,10 @@ async def security_headers(request:Request,call_next):
     if 'Referrer-Policy' not in response.headers: response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
     if request.url.path.startswith(('/api/','/r/','/c/')): response.headers['Cache-Control']='no-store'
     if response.headers.get('content-type','').startswith('text/html') and not request.url.path.startswith('/api/docs'):
-        response.headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+        # Chrome applies form-action to the redirect after a form POST as well.
+        # Public password forms must permit the validated HTTP(S) destination.
+        form_action="'self' https: http:" if request.url.path.startswith('/r/') else "'self'"
+        response.headers['Content-Security-Policy']=f"default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action {form_action}; base-uri 'none'; frame-ancestors 'none'"
     if settings.cookie_secure: response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 

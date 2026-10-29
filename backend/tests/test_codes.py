@@ -21,7 +21,7 @@ def test_all_static_content_types_generate_decodable_png(client,member,kind,cont
     decoded=zxingcpp.read_barcode(Image.open(io.BytesIO(png.content)))
     assert decoded and decoded.text.replace('\r\n','\n')==c['qr_payload'].replace('\r\n','\n')
 
-@pytest.mark.parametrize('pattern',['square','rounded','dots'])
+@pytest.mark.parametrize('pattern',['square','rounded','dots','soft','diamond','horizontal','vertical'])
 def test_branded_patterns_logo_and_frame_decode(client,member,pattern):
     out=io.BytesIO();Image.new('RGB',(64,64),'#087568').save(out,'PNG')
     logo='data:image/png;base64,'+base64.b64encode(out.getvalue()).decode()
@@ -75,7 +75,7 @@ def test_password_protected_redirect_has_no_leak_or_false_events(client,member):
     assert client.post(path,data={'password':'Wrong'}).status_code==403
     assert client.get('/api/codes/'+c['id']).json()['total_events']==0
     r=client.post(path+'?via=qr',data={'password':'Access123'},follow_redirects=False)
-    assert r.status_code==302 and r.headers['location']=='https://example.com/hidden'
+    assert r.status_code==303 and r.headers['location']=='https://example.com/hidden'
     assert client.get('/api/codes/'+c['id']).json()['total_events']==1
     assert client.patch('/api/codes/'+c['id'],json={'password':None}).json()['has_password'] is False
 

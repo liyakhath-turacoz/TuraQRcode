@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
 from .models import BusinessCard, User
-from .schemas import CardInput
+from .schemas import CardInput, luminance, readable_ink
 from .security import ready_user
 from .routes_codes import owned, html_page
 from .qr import render, vcard
@@ -47,7 +47,8 @@ def delete_card(card_id:str,user:User=Depends(ready_user),db:Session=Depends(get
 @router.get('/api/cards/{card_id}/qr')
 def card_qr(card_id:str,user:User=Depends(ready_user),db:Session=Depends(get_db)):
     card=owned(db,BusinessCard,card_id,user)
-    raw,mime=render(settings.public_base_url.rstrip('/')+'/c/'+card.slug,{'foreground':card.color,'background':'#ffffff'})
+    ink=card.color if (1.05/(luminance(card.color)+.05))>=4.5 else '#163b75'
+    raw,mime=render(settings.public_base_url.rstrip('/')+'/c/'+card.slug,{'foreground':ink,'background':'#ffffff'})
     return Response(raw,media_type=mime,headers={'Content-Disposition':'attachment; filename="business-card.png"'})
 
 
@@ -61,7 +62,7 @@ def public_card(db,slug):
 def public_profile(slug:str,db:Session=Depends(get_db)):
     c=public_card(db,slug)
     e=lambda v: escape(v,quote=True)
-    body='<p>LET’S CONNECT</p><h1>'+e(c.name)+'</h1><p>'+e(c.title)+'</p><p>'+e(c.company)+'</p>'
+    body='<header style="background:'+c.color+';color:'+readable_ink(c.color)+';padding:24px;border-radius:12px"><p>LET’S CONNECT</p><h1>'+e(c.name)+'</h1><p>'+e(c.title)+'</p><p>'+e(c.company)+'</p></header>'
     if c.email: body+='<p><a href="mailto:'+e(c.email)+'">'+e(c.email)+'</a></p>'
     if c.phone: body+='<p><a href="tel:'+e(c.phone)+'">'+e(c.phone)+'</a></p>'
     if c.website: body+='<p><a rel="noopener noreferrer" href="'+e(c.website)+'">Visit website</a></p>'
