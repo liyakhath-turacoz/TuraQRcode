@@ -114,6 +114,7 @@ TuraQRcode/
 │   │   ├── qr.py                    QR payloads, raster/vector/PDF rendering
 │   │   ├── routes_auth.py           Registration, login, profile, password/recovery
 │   │   ├── routes_codes.py          Codes, redirects, analytics, projects, bulk/exports
+│   │   ├── qr_render.py             Square vector composition and high-resolution exports
 │   │   ├── routes_cards.py          Business cards and public contact pages
 │   │   ├── routes_admin.py          Administrator operations and audit history
 │   │   └── manage.py                Check, migrate, initialize, Supabase checks
@@ -190,7 +191,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Public generator | Account-free static QR preview and PNG/SVG/PDF downloads |
 | QR content types | Website URL, plain text, email, telephone, SMS, Wi-Fi, UPI payment, form URL, app listing, public file URL, WhatsApp, YouTube, Instagram, Facebook, LinkedIn, and vCard contact details. Form and file codes point to an existing public URL; TuraQRcode does not host the file or create the form. |
 | QR modes | Static QR codes for all supported content types; editable, trackable website, form, app, file, and supported social URL QR codes plus short links; trackable Code 128 barcodes that open a website; fixed-value retail and inventory barcodes |
-| Design | Seven module patterns, independent corner-frame and center styles, 20 contrast-checked solid and gradient palettes, optional foreground/marker colors, independently styled labels that can be moved above or below the code, callout/border frames, and raster PNG/JPG/WebP logo up to 500 KB and 4 megapixels |
+| Design | Seven module patterns, independent corner-frame and center styles, 198 contrast-checked color combinations including multi-stop linear/radial gradients for QR ink, background, or both; separate marker colors; independently styled labels positioned between the QR clear margin and canvas edge, callout/border frames, and raster PNG/JPG/WebP logo up to 500 KB and 4 megapixels |
 | Barcodes | Separate saved barcode history; Code 128, Code 39, EAN-13, EAN-8, UPC-A; EAN/UPC check digits; optional value caption; high-contrast color presets and custom colors; adjustable bar width, height, and caption size; PNG/SVG/PDF and saved bundle/print exports. Track scan requests with managed Code 128 website links. |
 | Exports | PNG (256–2048 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
 | Short links | The Links workspace lists short links only; it has its own create flow, destination, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
@@ -200,7 +201,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | Overview | Code/active-code counts, clicks/scans, 14-day activity, top connections, devices, recent codes, quick-create shortcuts |
 | Analytics | Each trackable redirect is saved against its code with time, link-click or QR-scan channel, device category, and referrer host. Per-link activity is opened from its click count; reporting includes date filters, UTC daily trends, latest 25 requests, and CSV export up to 50,000 rows |
 | Projects | Every account receives a default project; new codes, links, barcodes, and bulk rows go there unless another project is selected. Project cards link to separate QR, Links, and Barcodes lists. Existing unassigned codes are migrated. Rename/color projects; deletion moves items to the default project, which cannot be deleted |
-| Business cards | Name, title, company, email, phone, one website/social-profile URL, any custom card color with automatic readable text and a contrasting exported QR; create/edit/delete, public profile, vCard download, QR export, copy address |
+| Business cards | Name, title, company, email, phone, website, portfolio links, ten social platforms, up to twelve work-experience entries, ten custom professional sections, profile photo, cover image, company logo, coordinated themes, readable text and a contrasting exported QR; full-page live editor, public profile, vCard download, QR export, copy address; deleting its linked QR also removes the card |
 | Bulk UI | CSV upload or paste, column mapping, URL or text batches, editable/static/short-link selection as applicable, row-level results, ZIP/print export; maximum 100 rows and 100 KB CSV input |
 | Bulk API | Up to 100 supported code objects per request; validation and alias conflicts reported per row while valid rows are saved |
 | Registration | Name/email/password; required combined Terms & Conditions and Privacy Policy checkbox; consent timestamp and policy version recorded |
@@ -217,12 +218,12 @@ The customer and administrator apps keep their own UI primitives so each builds 
 - A short link’s current destination and settings are saved in PostgreSQL. Its visit events are retained as activity history and removed with the link. Editing a destination replaces the current destination; prior destination revisions are not retained.
 - Analytics count requests, including repeats and bots. They do not claim unique people, precise geolocation, or verified human scans. Referrers/devices can be incomplete.
 - Profile email changes and self-service account deletion are not implemented. Account recovery is available through SMTP when configured or through the administrator-assisted workflow.
-- There is no billing/subscription UI, file/media QR hosting, GS1, integration marketplace, per-account custom-domain provisioning, or multi-social-link business-card editor in this release.
+- There is no billing/subscription UI, file/media QR hosting, GS1, integration marketplace, per-account custom-domain provisioning in this release.
 - SMTP delivery and public domain/HTTPS hosting require deployment-specific credentials/configuration. Functional tests are not a production load test.
 
 ## Complete page inventory
 
-### Customer app — 23 routes
+### Customer app — 24 routes
 
 | Route | Page | Access |
 |---|---|---|
@@ -242,6 +243,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | `/app/links/new` | Short-link creator, UTM tags, link controls | Signed-in account |
 | `/app/links/:id` | Short-link details, destination editor, and activity | Owner |
 | `/app/barcodes` | Saved barcodes | Signed-in owner |
+| `/app/barcodes/:id` | Saved barcode editor (old `/app/codes/:id` barcode links redirect here) | Signed in |
 | `/app/barcodes/new` | Barcode creator | Signed-in account |
 | `/app/codes/:id` | Code details and editor | Owner |
 | `/app/analytics` | Analytics and CSV reporting | Signed-in owner |
@@ -330,3 +332,13 @@ The browser suite exercises actual protected-form navigation to a different orig
 The Supabase migration `20261029_default_projects` was applied and verified against existing record counts. It preserves custom project assignments, creates a default for existing users, and assigns previously ungrouped codes. New deployments run the usual migration command; no additional environment keys or research-service credentials are needed.
 
 Reference research and feature decisions: [reference review](frontend/design-system/turaqrcode/REFERENCE_REVIEW.md). Firecrawl/Chrome capture files and local research tooling remain ignored under `backend/.local`; they are not product runtime dependencies.
+
+### Export sizes and card images
+
+QR PNG and SVG exports are always square, including labels, frames and logos. PNG files contain 300 DPI metadata. Size choices are 256, 354, 1,024 (default), 1,080, 1,200, 2,480 and 3,000 pixels per side. Ordinary PDFs use the matching square physical size at 300 DPI; the explicit A4 preset centers a square QR on A4 paper. SVG is recommended when artwork must scale beyond its chosen raster size. A zero label offset places its visible text at the outer edge of the required QR clear margin; 100 moves it to the canvas edge. The scan area is never covered.
+
+Barcode PNG, SVG and PDF exports use the same vector composition. Width choices are 1,024, 2,048 and 3,000 px; long encoded values can require a wider minimum to keep narrow bars readable. Unsaved color/height/caption changes are included in downloads. Barcode shapes remain rectangular according to their standard.
+
+Business-card images accept PNG, JPG and WebP up to 8 MB in the browser. Images are resized/compressed before upload and validated again on the server. Profile images, cover images and company logos are stored with the card; no public storage bucket is required. Run the latest migrations before serving the updated UI.
+
+Feature references: [QRStuff output sizes and printing](https://www.qrstuff.com/en-gb/faqs), [DENSO WAVE QR clear-margin specification](https://www.qrcode.com/en/howto/code.html/index.html), and [HiHello profile images, professional information, and social fields](https://support.hihello.com/hc/en-us/articles/13961518898971-Editing-Your-Card-on-a-Computer).

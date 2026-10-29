@@ -96,3 +96,15 @@ docker compose up --build -d
 Docker Desktop was not running in the development environment; Docker deployment is supplied but not an executed verification result. Review the initial Terms and Privacy content for your operating practices before public launch.
 
 Reference sources: [Supabase PostgreSQL connection guidance](https://supabase.com/docs/guides/database/connecting-to-postgres), [FastAPI security guidance](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/). QRStuff was consulted for [feature reference only](https://www.qrstuff.com/).
+
+### Barcode dependency repair
+
+The required encoder is **`python-barcode==0.16.1`**. The unrelated package named `barcode` is a genetics tool and can shadow the encoder, causing preview errors (including the old `pkg_resources` failure). Use the project's virtual environment for the service and all dependency commands. If an existing environment contains the wrong package, run these commands with the same Python interpreter that starts FastAPI:
+
+```powershell
+python -m pip uninstall -y barcode
+python -m pip install --force-reinstall python-barcode==0.16.1
+python -m pip install -r requirements.txt
+```
+
+Run from `backend`, restart FastAPI, then verify `/barcode-generator` and a saved tracked barcode. Fresh installations using `requirements.txt` install the correct encoder and `resvg-py` directly.

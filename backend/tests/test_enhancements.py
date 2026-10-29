@@ -378,7 +378,8 @@ def test_independent_label_colors_and_vertical_offsets_are_rendered(client):
     default_y,default_svg=bottom_y(0)
     closer_y,closer_svg=bottom_y(-8)
     farther_y,farther_svg=bottom_y(16)
-    assert closer_y==default_y-8 and farther_y==default_y+16
+    edge_y,_=bottom_y(100)
+    assert closer_y==default_y and default_y<farther_y<edge_y
     assert b'fill="#075985"' in default_svg and b'fill="#0f172a"' in default_svg
     assert b'font-style="italic"' in default_svg and b'font-weight="400"' in default_svg
     assert client.post('/api/qr/preview',json={'content':{'url':'https://example.com'},'design':{**base,'bottom_text_offset':-9}}).status_code==422

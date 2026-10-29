@@ -1,7 +1,7 @@
-import {useEffect,useMemo,useState,type FormEvent} from 'react';
+import {useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Barcode,Download,ArrowRight,ScanLine,SlidersHorizontal} from 'lucide-react';
-import {API,api,post,patch,message,saveBlob,download} from '../shared/api';
+import {API,api,post,patch,message,saveBlob} from '../shared/api';
 import {Button,Field,ErrorBox,Success} from '../shared/ui';
 import type {Code,Design,Project} from '../shared/types';
 import DesignColors from './DesignColors';
@@ -26,39 +26,43 @@ export default function BarcodeBuilder({guest=false,initial,onSaved}:{guest?:boo
  const [projects,setProjects]=useState<Project[]>([]);
  const [design,setDesign]=useState<Design>(initial?.design||initialDesign);
  const [preview,setPreview]=useState('');
+ const previewUrl=useRef('');
+ const [previewBusy,setPreviewBusy]=useState(false);
  const [previewError,setPreviewError]=useState('');
  const [error,setError]=useState('');
  const [success,setSuccess]=useState('');
  const [busy,setBusy]=useState(false);
+ const [downloadBusy,setDownloadBusy]=useState(false);
  const [exportFormat,setExportFormat]=useState('png');
+ const [exportSize,setExportSize]=useState('2048');
  const selected=useMemo(()=>formats.find(f=>f.id===format)!,[format]);
  const content={format,value,show_text:showText,tracked:tracked&&!guest};
 
  useEffect(()=>{if(!guest)api<Project[]>('/api/projects').then(setProjects).catch(()=>{});},[guest]);
  useEffect(()=>{
-  let objectUrl='';const controller=new AbortController();setPreview('');setPreviewError('');
+  const controller=new AbortController();setPreviewError('');setPreviewBusy(Boolean(value));
   const timer=setTimeout(async()=>{
-   if(!value)return;
+   if(!value){setPreview('');setPreviewBusy(false);return;}
    try{
-    const previewContent=initial?.mode==='dynamic'&&initial.qr_payload?{...content,value:initial.qr_payload,tracked:false}:content;
-    const r=await fetch(API+'/api/qr/preview?format=svg',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'barcode',content:previewContent,design}),signal:controller.signal});
+    const r=await fetch(API+'/api/qr/preview?format=svg&size=2048',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'barcode',content,design,code_id:initial?.id}),signal:controller.signal});
     if(!r.ok){const body=await r.json();throw new Error(body.detail||'Please check the barcode details.');}
-    objectUrl=URL.createObjectURL(await r.blob());setPreview(objectUrl);
-   }catch(e){if(!controller.signal.aborted)setPreviewError(message(e));}
+    const blob=await r.blob();if(controller.signal.aborted)return;
+    const next=URL.createObjectURL(blob);if(previewUrl.current)URL.revokeObjectURL(previewUrl.current);previewUrl.current=next;setPreview(next);
+   }catch(e){if(!controller.signal.aborted)setPreviewError(message(e));}finally{if(!controller.signal.aborted)setPreviewBusy(false);}
   },300);
-  return()=>{clearTimeout(timer);controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  return()=>{clearTimeout(timer);controller.abort();};
  },[format,value,showText,tracked,initial?.mode,initial?.qr_payload,JSON.stringify(design)]);
+ useEffect(()=>()=>{if(previewUrl.current)URL.revokeObjectURL(previewUrl.current);},[]);
 
  async function downloadBarcode(){
-  setBusy(true);setError('');
+  setDownloadBusy(true);setError('');
   try{
-   if(initial)await download('/api/codes/'+initial.id+'/download?format='+exportFormat,(name||'tura-barcode')+'.'+exportFormat);
-   else{
-    const r=await fetch(API+'/api/qr/preview?format='+exportFormat,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'barcode',content,design})});
+   {
+    const r=await fetch(API+'/api/qr/preview?format='+exportFormat+'&size='+exportSize,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'barcode',content,design,code_id:initial?.id})});
     if(!r.ok){const body=await r.json();throw new Error(body.detail||'Your download could not be completed.');}
     saveBlob(await r.blob(),(name||'tura-barcode')+'.'+exportFormat);
    }
-  }catch(e){setError(message(e));}finally{setBusy(false);}
+  }catch(e){setError(message(e));}finally{setDownloadBusy(false);}
  }
 
  async function save(e:FormEvent){
@@ -69,7 +73,7 @@ export default function BarcodeBuilder({guest=false,initial,onSaved}:{guest?:boo
     ?await patch<Code>('/api/codes/'+initial.id,patchData)
     :await post<Code>('/api/codes',{name,kind:'barcode',mode:tracked?'dynamic':'static',content,design,project_id:project||null});
    if(onSaved){onSaved(code);setSuccess('Your barcode settings have been saved.');}
-   else navigate('/app/codes/'+code.id,{state:{created:true}});
+   else navigate('/app/barcodes/'+code.id,{state:{created:true}});
   }catch(e){setError(message(e));}finally{setBusy(false);}
  }
 
@@ -101,10 +105,10 @@ export default function BarcodeBuilder({guest=false,initial,onSaved}:{guest?:boo
   </section>
   <aside className="builder-preview">
    <div className="preview-label"><span>YOUR BARCODE</span><span className="badge">{selected.label}</span></div>
-   <div className="barcode-stage">{preview?<img src={preview} alt="Your barcode preview"/>:<Barcode size={130} strokeWidth={1}/>}</div>
+   <div className="barcode-stage" aria-busy={previewBusy}>{preview?<img src={preview} alt="Your barcode preview"/>:<Barcode size={130} strokeWidth={1}/>}</div>
    <ErrorBox error={previewError}/>
    <p className="preview-description">{tracked?'The saved Code 128 will point to your managed link and record scan requests.':'Keep the clear space around the bars when placing your label.'}</p>
-   <div className="download-options"><Field label="Download format"><select value={exportFormat} onChange={e=>setExportFormat(e.target.value)}><option value="png">PNG · Image</option><option value="svg">SVG · Vector</option><option value="pdf">PDF · Print</option></select></Field><Button type="button" className="full" busy={busy} disabled={!preview||Boolean(previewError)||(tracked&&!initial&&!guest)} onClick={downloadBarcode}><Download size={16}/>Download {exportFormat.toUpperCase()}</Button>{tracked&&!initial&&!guest&&<p className="sublabel">Save the barcode first to download its unique tracked link.</p>}</div>
+   <div className="download-options"><Field label="Download format"><select value={exportFormat} onChange={e=>setExportFormat(e.target.value)}><option value="png">PNG · Image</option><option value="svg">SVG · Vector</option><option value="pdf">PDF · Print</option></select></Field><Field label="Output size"><select value={exportSize} onChange={event=>setExportSize(event.target.value)}><option value="1024">1,024 px · compact label</option><option value="2048">2,048 px · recommended</option><option value="3000">3,000 px · large print</option></select></Field><Button type="button" className="full" busy={downloadBusy} disabled={previewBusy||!preview||Boolean(previewError)||(tracked&&!initial&&!guest)} onClick={downloadBarcode}><Download size={16}/>Download {exportFormat.toUpperCase()}</Button>{tracked&&!initial&&!guest&&<p className="sublabel">Save the barcode first to download its unique tracked link.</p>}</div>
   </aside>
  </form>;
 }

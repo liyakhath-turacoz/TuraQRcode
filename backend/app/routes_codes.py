@@ -16,9 +16,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
-from .models import Code, Project, Event, User, now
+from .models import BusinessCard, Code, Project, Event, User, now
 from .schemas import CodeCreate, CodeUpdate, Preview, ProjectInput, validate_content, valid_url
-from .security import ready_user, passwords, verify, throttle
+from .security import current_user, ready_user, passwords, verify, throttle
 from .qr import payload, render_code
 from .projects import default_project
 
@@ -56,9 +56,13 @@ def add_code(db,data,user):
 
 
 @router.post('/api/qr/preview')
-def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float=Query(8.67,ge=2,le=50),print_preset:str=Query('standard',pattern='^(standard|social|business_card|a4|high_res)$')):
+def preview(data:Preview,request:Request,format:str=Query('svg',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float|None=Query(None,ge=2,le=50),print_preset:str=Query('standard',pattern='^(compact|standard|social|business_card|print|a4|high_res)$'),db:Session=Depends(get_db)):
     throttle(request,'preview',120,60)
     sample=(settings.public_base_url.rstrip('/')+'/r/preview?via=barcode') if data.kind=='barcode' and data.content.get('tracked') else None
+    if data.code_id:
+        code=owned(db,Code,data.code_id,ready_user(current_user(request,db)))
+        if code.kind!=data.kind: raise HTTPException(422,'Choose the saved code’s content type.')
+        sample=code_payload(code)
     raw,mime=render_code(data.kind,data.content,data.design.model_dump(),format,size,data=sample,print_width_cm=print_width_cm,print_preset=print_preset)
     return Response(raw,media_type=mime,headers={'Cache-Control':'no-store'})
 
@@ -153,11 +157,13 @@ def update_code(code_id:str,data:CodeUpdate,user:User=Depends(ready_user),db:Ses
 
 @router.delete('/api/codes/{code_id}',status_code=204)
 def delete_code(code_id:str,user:User=Depends(ready_user),db:Session=Depends(get_db)):
+    card=db.scalar(select(BusinessCard).where(BusinessCard.qr_code_id==code_id,BusinessCard.user_id==user.id))
+    if card: db.delete(card)
     db.delete(owned(db,Code,code_id,user)); db.commit()
 
 
 @router.get('/api/codes/{code_id}/download')
-def download_code(code_id:str,format:str=Query('png',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float=Query(8.67,ge=2,le=50),print_preset:str=Query('standard',pattern='^(standard|social|business_card|a4|high_res)$'),user:User=Depends(ready_user),db:Session=Depends(get_db)):
+def download_code(code_id:str,format:str=Query('png',pattern='^(png|svg|pdf)$'),size:int=Query(1024,ge=256,le=4096),print_width_cm:float|None=Query(None,ge=2,le=50),print_preset:str=Query('standard',pattern='^(compact|standard|social|business_card|print|a4|high_res)$'),user:User=Depends(ready_user),db:Session=Depends(get_db)):
     code=owned(db,Code,code_id,user)
     raw,mime=render_code(code.kind,code.content,code.design,format,size,data=code_payload(code),print_width_cm=print_width_cm,print_preset=print_preset)
     name=re.sub(r'[^A-Za-z0-9_-]','-',code.name)[:70] or 'qrcode'

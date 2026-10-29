@@ -4,14 +4,16 @@ import {Button,ErrorBox,Field,Modal} from '../shared/ui';
 import {message} from '../shared/api';
 
 export type ExportFormat='png'|'svg'|'pdf';
-export type ExportSize='standard'|'social'|'business_card'|'a4'|'high_res';
+export type ExportSize='compact'|'standard'|'social'|'business_card'|'print'|'a4'|'high_res';
 export type ExportOptions={format:ExportFormat;widthPx:number;size:ExportSize};
 const sizes:{id:ExportSize;label:string;width:number;detail:string}[]=[
- {id:'standard',label:'Standard share',width:1024,detail:'1,024 px square · everyday use'},
- {id:'social',label:'Social post',width:1080,detail:'1,080 px square · social profiles'},
- {id:'business_card',label:'Business card',width:1200,detail:'1,200 px · 90 × 50 mm PDF layout'},
- {id:'a4',label:'A4 print sheet',width:2400,detail:'2,400 px · A4 PDF with centered code'},
- {id:'high_res',label:'High resolution',width:3000,detail:'3,000 px square · large format'},
+ {id:'standard',label:'Standard · Recommended',width:1024,detail:'1,024 × 1,024 px · 8.7 cm at 300 DPI'},
+ {id:'compact',label:'Small label',width:256,detail:'256 × 256 px · 2.2 cm at 300 DPI'},
+ {id:'business_card',label:'Business-card insert',width:354,detail:'354 × 354 px · 3 cm at 300 DPI'},
+ {id:'social',label:'Social profile / post',width:1080,detail:'1,080 × 1,080 px · square digital artwork'},
+ {id:'print',label:'Flyer / packaging',width:1200,detail:'1,200 × 1,200 px · 10.2 cm at 300 DPI'},
+ {id:'a4',label:'A4 print sheet',width:2480,detail:'2,480 px square image · A4 page in PDF'},
+ {id:'high_res',label:'Poster / large format',width:3000,detail:'3,000 × 3,000 px · 25.4 cm at 300 DPI'},
 ];
 
 export default function ExportDialog({onClose,onExport,title='Download QR code'}:{onClose:()=>void;onExport:(options:ExportOptions)=>Promise<void>;title?:string}){

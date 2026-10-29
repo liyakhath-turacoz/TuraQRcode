@@ -1,0 +1,40 @@
+import AxeBuilder from '@axe-core/playwright';
+import {test,expect,type Page} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
+
+async function register(page:Page){
+ await page.goto('/register');await page.getByLabel('Full name').fill('Morgan Lee');await page.getByLabel('Email address').fill(`review-${Date.now()}@example.com`);await page.getByLabel('Password',{exact:true}).fill('ReviewPassword123!');await page.getByRole('checkbox').check();await page.getByRole('button',{name:'Create account',exact:true}).click();await expect(page).toHaveURL(/\/app$/);
+}
+
+test('export choices produce distinct exact square files with labels',async({page})=>{
+ test.setTimeout(90000);
+ await page.goto('/');await page.getByLabel('Website address').fill('https://example.com/square-exports');await page.getByRole('tab',{name:/Design/}).click();
+ await page.getByLabel('Text above the code').fill('WELCOME');await page.getByRole('group',{name:'Choose a text label'}).getByRole('button',{name:/Text below the code/}).click();await page.getByLabel('Text below the code').fill('SCAN ME');
+ await page.locator('.qr-style-trigger').click();const palettes=page.locator('.qr-style-option');await expect(palettes.nth(0)).toHaveAttribute('aria-label',/^Classic black & white:/);await expect(palettes.nth(1)).toHaveAttribute('aria-label',/^Classic white on black:/);await page.getByLabel('Search QR palettes').fill('Spectrum gradient on white');await page.getByRole('button',{name:/^Spectrum gradient on white · linear:/}).click();await expect(page.getByAltText('Your QR code preview')).toBeVisible();
+ for(const [size,px] of [['compact',256],['business_card',354],['high_res',3000]] as const){
+  await page.getByRole('button',{name:'Download QR code',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('select')).toHaveCount(2);await dialog.getByLabel('Output size').selectOption(size);const pending=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download PNG',exact:true}).click();const bytes=await readFile((await(await pending).path())!);expect(bytes.readUInt32BE(16)).toBe(px);expect(bytes.readUInt32BE(20)).toBe(px);
+ }
+ await page.screenshot({path:'tests/screenshots/square-export-editor.png',fullPage:true});
+});
+
+test('editor scroll continues onto the page after the inner panel reaches its end',async({page})=>{
+ await page.goto('/');await page.getByLabel('Website address').fill('https://example.com/scroll');await page.getByRole('tab',{name:/Design/}).click();
+ const editor=page.locator('.builder-body');await editor.scrollIntoViewIfNeeded();await editor.evaluate(element=>{element.scrollTop=element.scrollHeight;});
+ const box=(await editor.boundingBox())!;await page.mouse.move(box.x+box.width/2,Math.min(box.y+box.height/2,700));const before=await page.evaluate(()=>scrollY);await page.mouse.wheel(0,600);await expect.poll(()=>page.evaluate(()=>scrollY)).toBeGreaterThan(before);
+});
+
+test('business card images, experience and social profiles persist and delete from overview',async({page})=>{
+ await register(page);await page.goto('/app/business-cards');await page.getByRole('button',{name:'Create business card',exact:true}).click();await page.getByLabel('Full name').fill('Dr Morgan Lee');await page.getByLabel('Job title').fill('Clinical Lead');await page.getByLabel('Company',{exact:true}).fill('Turacoz');
+ for(const label of ['Upload profile photo','Upload cover image','Upload company logo'])await page.getByLabel(label,{exact:true}).setInputFiles('tests/fixtures/card-photo.png');
+ await page.getByRole('button',{name:'Add experience',exact:true}).click();await page.getByLabel('Role',{exact:true}).fill('Medical Director');await page.getByLabel('Organization',{exact:true}).fill('Research Practice');await page.getByLabel('Period',{exact:true}).fill('2020 – Present');await page.getByLabel('Experience highlights').fill('Leading clinical research and medical communication.');
+ await page.getByRole('button',{name:'Add social profile',exact:true}).click();await page.getByLabel('Social profile URL').fill('https://linkedin.com/in/morgan');await page.getByRole('button',{name:'Create business card',exact:true}).click();await expect(page.getByRole('heading',{name:'Dr Morgan Lee',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Digital business cards',exact:true})).toBeVisible();let card=(await(await page.request.get('/api/cards')).json())[0];expect(card.experience[0].role).toBe('Medical Director');expect(card.social_links[0].platform).toBe('linkedin');for(const key of ['profile_image','cover_image','company_logo'])expect(card[key]).toContain('data:image/webp;base64,');const html=await(await page.request.get(card.public_url)).text();expect(html).toContain('Research Practice');expect(html).toContain('linkedin.com/in/morgan');
+ const profile=await page.context().newPage();await profile.goto(card.public_url);await expect(profile.getByRole('img',{name:'Dr Morgan Lee',exact:true})).toBeVisible();await expect(profile.getByRole('link',{name:'LinkedIn'})).toHaveAttribute('href','https://linkedin.com/in/morgan');await profile.setViewportSize({width:390,height:844});expect(await profile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();const audit=await new AxeBuilder({page:profile}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();expect(audit.violations.map(item=>item.id)).toEqual([]);await profile.screenshot({path:'tests/screenshots/business-card-mobile.png',fullPage:true});await profile.close();
+ await page.getByRole('button',{name:'Edit Dr Morgan Lee',exact:true}).click();await page.getByRole('button',{name:'Remove profile photo',exact:true}).click();await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByRole('heading',{name:'Digital business cards',exact:true})).toBeVisible();card=(await(await page.request.get('/api/cards')).json())[0];expect(card.profile_image).toBeNull();
+ await page.goto('/app');await page.getByRole('button',{name:'Delete Dr Morgan Lee — Digital business card',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.goto('/app/business-cards');await expect(page.getByRole('heading',{name:'Your next introduction, reimagined',exact:true})).toBeVisible();expect((await page.request.get(card.public_url)).status()).toBe(404);
+});
+
+test('saved tracked barcode stays visible while editing and downloads the selected width',async({page})=>{
+ await register(page);await page.goto('/app/barcodes/new');await page.getByLabel('Barcode name').fill('Tracked service label');await page.getByRole('checkbox',{name:/Measure scans/}).check();await page.getByLabel('Website destination',{exact:true}).fill('https://example.com/'+('service-'.repeat(20)));await expect(page.getByAltText('Your barcode preview')).toBeVisible();await page.getByRole('button',{name:'Save barcode',exact:true}).click();await expect(page).toHaveURL(/\/app\/barcodes\/[a-f0-9-]+$/);
+ await page.getByRole('button',{name:'Plum',exact:true}).click();await page.getByLabel('Bar height',{exact:true}).focus();await page.getByLabel('Bar height',{exact:true}).press('End');await expect(page.getByAltText('Your barcode preview')).toBeVisible();await expect(page.getByRole('alert')).toHaveCount(0);await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'barcode settings'})).toBeVisible();await page.getByLabel('Output size').selectOption('3000');const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download PNG',exact:true}).click();const bytes=await readFile((await(await pending).path())!);expect(bytes.readUInt32BE(16)).toBe(3000);await page.screenshot({path:'tests/screenshots/barcode-edited.png',fullPage:true});
+});

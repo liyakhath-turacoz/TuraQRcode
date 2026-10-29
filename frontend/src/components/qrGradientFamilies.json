@@ -1,0 +1,110 @@
+[
+  {
+    "name": "Rose",
+    "dark": [
+      "#831843",
+      "#9d174d",
+      "#86198f"
+    ],
+    "light": [
+      "#fce7f3",
+      "#f5d0fe",
+      "#fae8ff"
+    ]
+  },
+  {
+    "name": "Violet",
+    "dark": [
+      "#4c1d95",
+      "#6b21a8",
+      "#3730a3"
+    ],
+    "light": [
+      "#ede9fe",
+      "#f5d0fe",
+      "#dbeafe"
+    ]
+  },
+  {
+    "name": "Blue",
+    "dark": [
+      "#172554",
+      "#1e40af",
+      "#075985"
+    ],
+    "light": [
+      "#dbeafe",
+      "#bae6fd",
+      "#e0e7ff"
+    ]
+  },
+  {
+    "name": "Cyan",
+    "dark": [
+      "#164e63",
+      "#155e75",
+      "#134e4a"
+    ],
+    "light": [
+      "#cffafe",
+      "#a5f3fc",
+      "#ccfbf1"
+    ]
+  },
+  {
+    "name": "Green",
+    "dark": [
+      "#14532d",
+      "#166534",
+      "#064e3b"
+    ],
+    "light": [
+      "#dcfce7",
+      "#d1fae5",
+      "#ecfccb"
+    ]
+  },
+  {
+    "name": "Amber",
+    "dark": [
+      "#78350f",
+      "#92400e",
+      "#7c2d12"
+    ],
+    "light": [
+      "#fef3c7",
+      "#ffedd5",
+      "#fef9c3"
+    ]
+  },
+  {
+    "name": "Coral",
+    "dark": [
+      "#881337",
+      "#9f1239",
+      "#9a3412"
+    ],
+    "light": [
+      "#ffe4e6",
+      "#ffedd5",
+      "#fce7f3"
+    ]
+  },
+  {
+    "name": "Spectrum",
+    "dark": [
+      "#86198f",
+      "#9d174d",
+      "#9a3412",
+      "#3730a3",
+      "#075985"
+    ],
+    "light": [
+      "#f5d0fe",
+      "#fbcfe8",
+      "#fed7aa",
+      "#ddd6fe",
+      "#bae6fd"
+    ]
+  }
+]

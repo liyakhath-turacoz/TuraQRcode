@@ -1,11 +1,14 @@
 """Non-destructive live checks; only this run's temporary account is removed."""
 import sys
+import base64
+import io
 from pathlib import Path
 from uuid import uuid4
 from datetime import timedelta
 from sqlalchemy import select,text,delete
 from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
+from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app.config import settings
 from app.db import engine
@@ -70,6 +73,24 @@ def run():
             assert label['content']['value']=='5901234123457'
             assert client.get('/api/codes/'+label['id']+'/download').content.startswith(b'\x89PNG')
             print('PASS live password unlock and barcode persistence/export')
+            image=io.BytesIO();Image.new('RGB',(40,40),'#2563eb').save(image,'PNG')
+            media='data:image/png;base64,'+base64.b64encode(image.getvalue()).decode()
+            card_response=client.post('/api/cards',json={'name':'Temporary professional card','profile_image':media,'cover_image':media,'company_logo':media,
+                'experience':[{'role':'Temporary reviewer','organization':'Test organization','period':'2026'}],
+                'social_links':[{'platform':'linkedin','url':'https://linkedin.com/in/example'}]})
+            assert card_response.status_code==201
+            card=card_response.json()
+            assert client.get('/api/cards').json()[0]['profile_image'].startswith('data:image/webp;base64,')
+            assert 'Temporary reviewer' in client.get('/c/'+card['slug']).text
+            assert client.delete('/api/codes/'+card['qr_code_id']).status_code==204
+            assert client.get('/api/cards').json()==[] and client.get('/c/'+card['slug']).status_code==404
+            print('PASS live card images, experience/social persistence and linked deletion')
+            tracked=client.post('/api/codes',json={'name':'Temporary tracked barcode','kind':'barcode','mode':'dynamic',
+                'content':{'format':'code128','value':'https://example.com/'+('long-destination-'*10),'tracked':True}})
+            assert tracked.status_code==201
+            exported=client.get('/api/codes/'+tracked.json()['id']+'/download?size=2048')
+            assert exported.status_code==200 and Image.open(io.BytesIO(exported.content)).width==2048
+            print('PASS live long-destination tracked barcode and sized export')
             assert client.get('/api/admin/overview').status_code==403
             print('PASS live administrator access restrictions')
             assert client.delete('/api/codes/'+code['id']).status_code==204

@@ -9,18 +9,15 @@ Executed on **29 October 2026** in `E:\TuraQRcode`.
 | Application layout | `backend`, `admin`, and `frontend` are independently runnable/buildable application folders. Subsequently consolidated under one root Git repository for the requested GitHub remote, with root README/deployment documentation. |
 | Customer production build | Passed: TypeScript and Vite |
 | Administrator production build | Passed: TypeScript and Vite |
-| Backend/PostgreSQL test suite | 129 tests passed against isolated, genuine local PostgreSQL |
-| Browser end-to-end suite | 19 scenarios passed in Chromium; 390 px mobile and 1280 px desktop coverage |
+| Backend/PostgreSQL test suite | 174 tests passed against isolated, genuine local PostgreSQL |
+| Browser end-to-end suite | 25 scenarios passed in Chromium; 390 px mobile and 1280 px desktop coverage |
 | Automated accessibility | No violations for the selected WCAG A/AA checks on public, account, workspace, and administrator activity pages |
 | QR decoding | Seven module patterns, supported independent corner-frame/center combinations, scan-safe gradient palettes, individually styled labels, frames, and logos decoded with ZXing-C++ |
 | Supabase connection | Passed with client-to-Supabase TLS verified through libpq |
-| Supabase migrations | Revision `20261029_default_projects` applied; eight application tables plus the Alembic version table |
+| Supabase migrations | Revision `20261029_card_media` applied; eight application tables plus the Alembic version table |
 | Supabase data isolation | Private `tura` schema; RLS enabled; Supabase anonymous/authenticated API roles denied schema access |
 | Live persistence smoke | Registration, sessions, QR creation/read-back, redirect, scan reporting, downloads, role restriction, and deletion passed |
 | Initial administrator | Exists server-side, Argon2id hash verified, administrator role verified, mandatory password change verified |
-| npm audit | Zero known vulnerabilities in customer, administrator, and local database tooling dependencies |
-| pip-audit | No known vulnerabilities in the installed Python environment |
-| Combined startup command | Passed: `scripts/dev.py` started all three applications; actual customer home, registration, both sign-in screens, and Supabase API readiness passed with no browser runtime errors |
 
 The live smoke account and its data were removed after testing. The real Supabase administrator’s temporary password was **not changed by tests**. Administrator password changes in browser tests occur only in the local `tura_e2e` database.
 
@@ -84,10 +81,23 @@ One upstream deprecation warning concerns Starlette’s test client using `httpx
 
 ## Blue design and generator expansion
 
-The existing migration/backfill verification remains valid. This feature adds no database columns or enum migrations: code types and appearance settings use existing JSON records. A read-only Supabase check this run confirmed connection/TLS and the current application schema revision. The prior migration/backfill verification established: before/after counts for users, codes, and business cards matched; every existing account has a default project and no code remains unassigned. Existing custom project assignments and the real administrator password/state were preserved. The live smoke script verifies current Alembic head, default-project protection, protected unlock, barcode storage/exports, ordinary CRUD/analytics, and removes only its temporary account.
+The existing migration/backfill verification remains valid. Code types and QR appearance remain in existing JSON records. Business-card profile/theme/media migrations add the fields for images, experience, social links, and professional sections; the current schema head is `20261029_card_media`. A read-only Supabase check this run confirmed connection/TLS and the current application schema revision. The prior migration/backfill verification established: before/after counts for users, codes, and business cards matched; every existing account has a default project and no code remains unassigned. Existing custom project assignments and the real administrator password/state were preserved. The live smoke script verifies current Alembic head, default-project protection, protected unlock, barcode storage/exports, ordinary CRUD/analytics, and removes only its temporary account.
 
-The 19 browser scenarios include public/account/workspace accessibility checks, coordinated QR color presets, blocked low-contrast custom pairs, module and corner-marker shape controls, independently styled movable QR labels, gradient palette and editor controls for expiry/alias/password/mobile destination, frame choices, mobile design layout, EAN check-digit validation, barcode exports/saving, tracked Code 128 scan history and appearance, QR type selection and dynamic form links, custom short links, bulk-import row errors, and desktop/mobile password navigation. QR image tests also decode gradient exports, labels, and supported marker combinations with ZXing-C++.
+The 25 browser scenarios include public/account/workspace accessibility checks, coordinated QR color presets, blocked low-contrast custom pairs, module and corner-marker shape controls, independently styled movable QR labels, gradient palette and editor controls for expiry/alias/password/mobile destination, frame choices, mobile design layout, EAN check-digit validation, barcode exports/saving, tracked Code 128 scan history and appearance, QR type selection and dynamic form links, custom short links, bulk-import row errors, and desktop/mobile password navigation. QR image tests also decode gradient exports, labels, and supported marker combinations with ZXing-C++.
 
 Firecrawl captured both reference pages and screenshots. Chrome DevTools MCP captured QRStuff and the updated local pages; its Bitly navigation timed out, with Firecrawl providing that page evidence. Reference capture files and tools remain ignored under `backend/.local`. No reference-site login was required for the public-page review. See the design-system reference review for feature scope.
 
 The running development setup was also checked at customer port 5173, administrator port 5174, and API port 8000 with the project virtual environment: QR preview, barcode preview, Supabase readiness, and the administrator sign-in screen passed with no browser JavaScript exceptions. The combined launcher now re-executes inside the project venv when available, preventing accidental use of missing global Python dependencies.
+
+## Square export and professional profile verification
+
+- PNG/SVG files with labels, borders and logos have exact square dimensions at 256, 354, 1,024, 1,080, 1,200, 2,480 and 3,000 px. PNGs report 300 DPI. PDF MediaBox dimensions vary with the selected size; only the explicit A4 option adds a rectangular paper sheet.
+- All 100 original palette combinations and all 96 new featured linear/radial multicolor combinations decode with ZXing-C++; classic and inverted designs are also covered. Browser tests confirm the 198-option picker starts with the two classics and then the featured gradients.
+- Labels at zero sit at the outer clear-margin boundary; maximum positions reach the square canvas edge. The four-module scan margin stays clear. Raster and SVG use one vector composition, including proportional logo placement.
+- Barcode tests cover all five standards, check digits, long tracked destinations, saved/unsaved appearance, exact requested width where the standard permits it, caption units, and PNG/SVG/PDF. The actual running local API was checked after replacing the unrelated `barcode` package with `python-barcode==0.16.1`; both QR and barcode PNGs decoded.
+- Browser tests verify nested-editor scroll chaining, separate `/app/barcodes/:id` navigation, and completed record creation rather than matching `/new` during a pending save.
+- Card media tests create, reload, edit/remove profile photos, covers, and company logos. Structured experience and ten supported social platforms persist and render on the public profile. Public mobile rendering and automated accessibility pass. Light brand accents retain a decorative role in the hero while white panels use a readable link color.
+- Deleting a card's QR from Overview removes the card, public profile, linked QR and activity consistently. Valid bulk rows keep their default project, invalid/duplicate rows report failures, ZIP images decode as square QR artwork, and empty/oversized batches are rejected.
+- A fresh Supabase smoke account verified image/experience/social persistence, linked deletion, long tracked barcode export, existing QR/auth/analytics flows, migration head, TLS, and access restrictions. Its data was removed in the cleanup block; existing administrator credentials/state were preserved.
+
+Physical camera/printer testing, sustained production load, and deployment-specific SMTP delivery are outside these automated results.

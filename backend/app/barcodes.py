@@ -81,17 +81,35 @@ def render_barcode(content,design,fmt='png',size=1024):
              'write_text':content.get('show_text',True),'foreground':design.get('foreground','#163b75'),
              'background':design.get('background','#ffffff'),'dpi':300}
     out=io.BytesIO()
-    symbol(content,SVGWriter() if fmt=='svg' else ImageWriter()).write(out,options)
-    if fmt=='svg': return out.getvalue(),'image/svg+xml'
-    image=Image.open(io.BytesIO(out.getvalue())).convert('RGB')
-    # Never reduce narrow bars below two pixels; a long Code 128 can exceed size.
-    width=max(size,image.width)
-    image=image.resize((width,round(width*image.height/image.width)),Image.Resampling.NEAREST)
+    from xml.etree import ElementTree as ET
+    import resvg_py
+    from .qr_render import font_files
+    encoder=symbol(content,SVGWriter())
+    encoder.write(out,options)
+    document=ET.fromstring(out.getvalue())
+    natural_width=float(document.get('width').removesuffix('mm'))
+    natural_height=float(document.get('height').removesuffix('mm'))
+    # Normalize all source lengths into the same millimetre viewBox before sizing.
+    for element in document.iter():
+        for key,value in list(element.attrib.items()):
+            if value.endswith('mm'): element.set(key,value[:-2])
+            elif key=='font-size' and value.endswith('pt'): element.set(key,str(float(value[:-2])*25.4/72))
+            elif key=='style': element.set(key,re.sub(r'([\d.]+)pt',lambda match:str(float(match.group(1))*25.4/72),value))
+        if element.tag.endswith('text'): element.set('font-family','Bitstream Vera Sans')
+    bits=len(encoder.build()[0])
+    width=max(size,round((bits+13/options['module_width'])*2))
+    height=round(width*natural_height/natural_width)
+    document.set('width',str(width));document.set('height',str(height))
+    document.set('viewBox',f'0 0 {natural_width} {natural_height}')
+    svg=ET.tostring(document,encoding='utf-8',xml_declaration=True)
+    if fmt=='svg': return svg,'image/svg+xml'
+    raw=resvg_py.svg_to_bytes(svg_string=svg.decode(),font_files=font_files(),skip_system_fonts=True)
+    image=Image.open(io.BytesIO(raw)).convert('RGB')
     out=io.BytesIO()
     if fmt=='pdf':
-        pdf=canvas.Canvas(out,pagesize=(600,260)); pdf.setTitle('TuraQRcode barcode')
-        pdf.drawImage(ImageReader(image),24,24,width=552,height=212,preserveAspectRatio=True,anchor='c')
+        pdf=canvas.Canvas(out,pagesize=(width*72/300,height*72/300)); pdf.setTitle('TuraQRcode barcode')
+        pdf.drawImage(ImageReader(image),0,0,width=width*72/300,height=height*72/300)
         pdf.showPage();pdf.save()
         return out.getvalue(),'application/pdf'
-    image.save(out,'PNG')
+    image.save(out,'PNG',dpi=(300,300))
     return out.getvalue(),'image/png'

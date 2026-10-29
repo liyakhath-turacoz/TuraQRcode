@@ -61,7 +61,7 @@
   padding: 4px 3px 12px;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-color: #ffffff30 transparent;
   scrollbar-width: thin;
 }
@@ -745,7 +745,7 @@
   gap: 8px;
   max-height: 360px;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   padding: 1px 3px 3px 1px;
 }
 
@@ -1313,3 +1313,30 @@
   .card-studio-form .field-grid { grid-template-columns: 1fr; }
   .card-studio-preview { padding: 12px; }
 }
+
+/* Artwork stays inside its stage; nested editors hand scrolling back to the page. */
+.barcode-builder .builder-editor { grid-template-rows: minmax(0,1fr) auto; }
+.barcode-stage { display:flex; align-items:center; justify-content:center; width:100%; min-height:190px; padding:18px; background:white; border:1px solid #dbe4f0; border-radius:12px; overflow:hidden; }
+.barcode-stage img { display:block; width:100%; height:auto; max-height:330px; object-fit:contain; }
+.qr-stage { aspect-ratio:1; }
+.qr-stage img { width:100%; height:100%; object-fit:contain; }
+.qr-label-position>button,.qr-label-position>button:active { cursor:pointer; }
+.card-media-fields { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px; }
+.card-media-slot { min-width:0;padding:12px;border:1px solid #dbe4f0;border-radius:12px; }
+.card-media-thumbnail { display:grid;place-items:center;aspect-ratio:1.5;background:#f1f5fb;border-radius:9px;overflow:hidden;color:#64748b;margin-bottom:12px; }
+.card-media-thumbnail img { width:100%;height:100%;object-fit:contain; }
+.card-media-thumbnail.profile_image img { object-fit:cover; }
+.card-media-label { display:grid;gap:8px;font-size:12px;font-weight:650; }
+.card-media-label input { max-width:100%;font-size:10px; }
+.card-media-slot .text-link { margin-top:9px; }
+.card-live-hero { overflow:hidden; }
+.card-live-cover { display:block;width:calc(100% + 44px);height:140px;object-fit:cover;margin:-22px -22px 18px;max-width:none; }
+.card-live-identity { display:flex;justify-content:space-between;align-items:center;gap:16px; }
+.card-live-avatar { overflow:hidden; }
+.card-live-avatar img { width:100%;height:100%;object-fit:cover; }
+.card-live-company-logo { max-width:90px;max-height:55px;object-fit:contain;padding:6px;border-radius:8px;background:white; }
+.card-live-experience { border-left:2px solid #dbeafe;padding-left:12px;margin-top:14px; }
+.card-live-experience small { display:block;margin-top:5px;color:#52657d; }
+.card-profile-section-editor legend { padding:0 6px;color:#52657d;font-size:11px; }
+@media(max-width:700px) { .card-media-fields { grid-template-columns:1fr; } .card-media-slot { display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:center; }.card-media-thumbnail { margin:0; }.card-media-slot .text-link { grid-column:2; } }
+.card-monogram { overflow:hidden; }.card-monogram img { width:100%;height:100%;object-fit:cover; }

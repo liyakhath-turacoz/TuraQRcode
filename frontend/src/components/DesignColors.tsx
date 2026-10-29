@@ -2,6 +2,7 @@ import {useState,type CSSProperties} from 'react';
 import {Check, ChevronDown, Palette} from 'lucide-react';
 import {Field} from '../shared/ui';
 import type {Design} from '../shared/types';
+import {featuredPalettes} from './qrPalettes';
 
 export function luminance(hex:string) {
   const rgb=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
@@ -25,7 +26,10 @@ export type QRStylePreset={
   background:string;
   end?:string;
   angle?:number;
-  markerColor:string;
+  markerColor:string|null;
+  foregroundStops?:string[];
+  backgroundStops?:string[];
+  gradient?:'linear'|'radial';
   descriptor:string;
 };
 
@@ -70,13 +74,16 @@ const makePreset=(background:PaletteStop,foreground:PaletteStop,index:number):QR
     descriptor:`${foreground.end?'Gradient ink':'Solid ink'} · ${background.end?'gradient background':'solid background'} · contrasting markers`,
   };
 };
-export const qrStylePresets:QRStylePreset[]= [...lightBackgrounds.map((background,backgroundIndex)=>
+const legacyPresets:QRStylePreset[]= [...lightBackgrounds.map((background,backgroundIndex)=>
   darkInks.filter(ink=>safeContrast(ink,background)).map((ink,index)=>makePreset(background,ink,backgroundIndex+index)),
 ),...darkBackgrounds.map((background,backgroundIndex)=>
   lightInks.filter(ink=>safeContrast(ink,background)).map((ink,index)=>makePreset(background,ink,backgroundIndex+index)),
 )].flat();
+export const qrStylePresets=[...featuredPalettes,...legacyPresets];
 
 export const textColorPresets=[
+  {name:'White',value:'#ffffff'},
+  {name:'Soft white',value:'#f8fafc'},
   {name:'Classic ink',value:'#0f172a'},
   {name:'Signature blue',value:'#163b75'},
   {name:'Ocean',value:'#075985'},
@@ -88,7 +95,7 @@ export const textColorPresets=[
 ];
 
 export function isSafeTextColor(color:string,design:Design) {
-  return [design.background,design.background_end||design.background].every(background=>contrast(color,background)>=4.5);
+  return (design.background_stops||[design.background,design.background_end||design.background]).every(background=>contrast(color,background)>=4.5);
 }
 
 function samePreset(design:Design,preset:QRStylePreset) {
@@ -98,7 +105,10 @@ function samePreset(design:Design,preset:QRStylePreset) {
     && design.background.toLowerCase()===preset.background
     && (design.background_end||'')===(preset.end||'')
     && Number(design.background_angle||0)===(preset.end?Number(preset.angle||0):0)
-    && (design.eye_color||design.foreground).toLowerCase()===preset.markerColor;
+    && (preset.markerColor===null?!design.eye_color:(design.eye_color||design.foreground).toLowerCase()===preset.markerColor)
+    && JSON.stringify(design.foreground_stops||[])===JSON.stringify(preset.foregroundStops||[])
+    && JSON.stringify(design.background_stops||[])===JSON.stringify(preset.backgroundStops||[])
+    && (design.foreground_gradient||'linear')===(preset.gradient||'linear');
 }
 
 export default function DesignColors({design,onChange,label,heading}:{design:Design;onChange:(value:Design)=>void;label?:string;showEyes?:boolean;heading?:string}) {
@@ -108,12 +118,13 @@ export default function DesignColors({design,onChange,label,heading}:{design:Des
   const active=qrStylePresets.find(preset=>samePreset(design,preset));
   const chosen=active||null;
   const select=(preset:QRStylePreset)=>{
-    onChange({...design,foreground:preset.foreground,foreground_end:preset.foregroundEnd||null,foreground_angle:preset.foregroundEnd?(preset.foregroundAngle||0):0,background:preset.background,background_end:preset.end||null,background_angle:preset.end?(preset.angle||0):0,eye_color:preset.markerColor,top_text_color:preset.foreground,bottom_text_color:preset.foreground});
+    onChange({...design,foreground:preset.foreground,foreground_end:preset.foregroundEnd||null,foreground_angle:preset.foregroundEnd?(preset.foregroundAngle||0):0,background:preset.background,background_end:preset.end||null,background_angle:preset.end?(preset.angle||0):0,eye_color:preset.markerColor,top_text_color:preset.foreground,bottom_text_color:preset.foreground,foreground_stops:preset.foregroundStops||null,background_stops:preset.backgroundStops||null,foreground_gradient:preset.gradient||'linear',background_gradient:preset.gradient||'linear'});
     setOpen(false);
     setSearch('');
   };
-  const fill=(preset:QRStylePreset)=>preset.end?`linear-gradient(${preset.angle||0}deg, ${preset.background}, ${preset.end})`:preset.background;
-  const inkFill=(preset:QRStylePreset)=>preset.foregroundEnd?`linear-gradient(${preset.foregroundAngle||0}deg, ${preset.foreground}, ${preset.foregroundEnd})`:preset.foreground;
+  const gradient=(colors:string[],style:string,angle:number)=>style==='radial'?`radial-gradient(circle, ${colors.join(', ')})`:`linear-gradient(${angle}deg, ${colors.join(', ')})`;
+  const fill=(preset:QRStylePreset)=>preset.end?gradient(preset.backgroundStops||[preset.background,preset.end],preset.gradient||'linear',preset.angle||0):preset.background;
+  const inkFill=(preset:QRStylePreset)=>preset.foregroundEnd?gradient(preset.foregroundStops||[preset.foreground,preset.foregroundEnd],preset.gradient||'linear',preset.foregroundAngle||0):preset.foreground;
   const visiblePresets=qrStylePresets.filter(preset=>`${preset.name} ${preset.descriptor}`.toLowerCase().includes(search.trim().toLowerCase()));
 
   return <div className="qr-style-picker">
@@ -136,7 +147,7 @@ export default function DesignColors({design,onChange,label,heading}:{design:Des
         return <button type="button" key={preset.name} className={`qr-style-option${selected?' selected':''}`} aria-pressed={selected} aria-label={`${preset.name}: ${preset.descriptor}`} onClick={()=>select(preset)}>
           <span className="qr-style-option-preview" style={{background:fill(preset)}}>
             <span className="qr-style-modules square" style={{'--qr-ink':preset.foreground,'--qr-fill':inkFill(preset)} as CSSProperties}>{Array.from({length:9},(_,index)=><i key={index}/>)}</span>
-            <span className="qr-style-corners" style={{'--qr-ink':preset.markerColor} as CSSProperties}><i/><b/></span>
+            <span className="qr-style-corners" style={{'--qr-ink':preset.markerColor||preset.foreground} as CSSProperties}><i/><b/></span>
           </span>
           <span className="qr-style-option-name">{preset.name}{selected&&<Check size={14}/>}</span>
           <span className="qr-style-option-description">{preset.descriptor}</span>

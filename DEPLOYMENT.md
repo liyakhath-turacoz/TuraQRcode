@@ -501,3 +501,25 @@ After publishing, verify:
 5. Change QR pattern, corner style, frame text, colors, and logo; export and scan the final image. Create a business card using a light brand color and verify readable text and its QR.
 
 The server supplies the updated Content Security Policy for protected-link forms. If a CDN or custom Nginx rule injects an additional `form-action 'self'` policy on `/r/`, remove that conflicting rule for these public password pages: Chrome can apply it to the destination after a form submission. Preserve HTTPS and the remaining security headers. Hard-refresh a previously opened password form after deploying the fix.
+
+## Updating square exports and professional business cards
+
+After pulling this release, install the updated `backend/requirements.txt` using the service's Python environment. `resvg-py` supplies Windows/Linux wheels for the SVG-to-PNG renderer; no Cairo service is required. ReportLab's bundled fonts keep label metrics consistent between preview and download. Rebuild the customer frontend, run `python -m app.manage migrate`, then restart FastAPI. The new `20261029_card_media` migration adds profile/cover/logo image fields and JSON experience/social fields without removing existing cards.
+
+Card uploads are compressed in the browser and bounded again server-side. Keep the existing Nginx `client_max_body_size 2m` setting; card records (including images) live in PostgreSQL and are included in the normal database backup. Keep page/API caching disabled for `/c/` so profile changes and deletions take effect promptly.
+
+Verify after updating: download the same labeled QR at 354 and 1,200 px and inspect the actual file dimensions; ordinary PDF pages must also have different square physical dimensions. A4 is an explicit paper layout. Create a card with images, experience and a social profile, check its public page, then delete the linked QR and confirm both records are removed. Generate and edit a tracked Code 128 barcode with a long destination; its preview and downloaded image must remain readable.
+
+Sizing references: [QRStuff printing and minimum-size guidance](https://www.qrstuff.com/en-gb/faqs), [DENSO WAVE four-module quiet zone](https://www.qrcode.com/en/howto/code.html/index.html). The default export is 1,024 px square; the business-card insert is 354 px (3 cm at 300 DPI). Test printed artwork at the intended viewing distance.
+
+### Barcode dependency repair
+
+The required encoder is **`python-barcode==0.16.1`**. The unrelated package named `barcode` is a genetics tool and can shadow the encoder, causing preview errors (including the old `pkg_resources` failure). Use the project's virtual environment for the service and all dependency commands. If an existing environment contains the wrong package, run these commands with the same Python interpreter that starts FastAPI:
+
+```powershell
+python -m pip uninstall -y barcode
+python -m pip install --force-reinstall python-barcode==0.16.1
+python -m pip install -r requirements.txt
+```
+
+Run from `backend`, restart FastAPI, then verify `/barcode-generator` and a saved tracked barcode. Fresh installations using `requirements.txt` install the correct encoder and `resvg-py` directly.

@@ -102,6 +102,10 @@ class Design(Input):
     background: str = '#ffffff'
     background_end: str | None = None
     background_angle: int = Field(default=0,ge=0,le=359)
+    foreground_stops: list[str] | None = Field(default=None, min_length=2, max_length=6)
+    background_stops: list[str] | None = Field(default=None, min_length=2, max_length=6)
+    foreground_gradient: Literal['linear', 'radial'] = 'linear'
+    background_gradient: Literal['linear', 'radial'] = 'linear'
     pattern: Literal['square', 'rounded', 'dots', 'diamond', 'soft', 'horizontal', 'vertical'] = 'square'
     eye_style: Literal['square', 'rounded', 'circle'] = 'square'
     eye_frame_style: Literal['square', 'rounded', 'circle'] | None = None
@@ -118,12 +122,12 @@ class Design(Input):
     top_text_bold: bool | None = None
     top_text_italic: bool | None = None
     top_text_color: str | None = None
-    top_text_offset: int = Field(default=0,ge=-8,le=32)
+    top_text_offset: int = Field(default=0,ge=-8,le=100)
     bottom_text_size: int | None = Field(default=None,ge=12,le=36)
     bottom_text_bold: bool | None = None
     bottom_text_italic: bool | None = None
     bottom_text_color: str | None = None
-    bottom_text_offset: int = Field(default=0,ge=-8,le=32)
+    bottom_text_offset: int = Field(default=0,ge=-8,le=100)
     logo: str | None = Field(default=None, max_length=700000)
     barcode_module_width: float = Field(default=0.3, ge=0.2, le=0.8)
     barcode_height: int = Field(default=22, ge=12, le=60)
@@ -137,10 +141,24 @@ class Design(Input):
             raise ValueError('Choose a valid color.')
         return value.lower()
 
+    @field_validator('foreground_stops', 'background_stops')
+    @classmethod
+    def gradient_stops(cls, value):
+        if value is not None and any(not re.fullmatch(r'#[0-9a-fA-F]{6}', color) for color in value):
+            raise ValueError('Choose valid gradient colors.')
+        return [color.lower() for color in value] if value else None
+
     @model_validator(mode='after')
     def contrast(self):
-        backgrounds = [luminance(self.background)] + ([luminance(self.background_end)] if self.background_end else [])
-        foregrounds = [luminance(self.foreground)] + ([luminance(self.foreground_end)] if self.foreground_end else [])
+        def samples(part):
+            colors = getattr(self, part+'_stops') or [getattr(self, part)] + ([getattr(self, part+'_end')] if getattr(self, part+'_end') else [])
+            result = [luminance(color) for color in colors]
+            for first, last in zip(colors, colors[1:]):
+                for step in range(1, 8):
+                    mix = '#' + ''.join(f'{round(int(first[i:i+2],16)*(1-step/8)+int(last[i:i+2],16)*step/8):02x}' for i in (1,3,5))
+                    result.append(luminance(mix))
+            return result
+        backgrounds, foregrounds = samples('background'), samples('foreground')
         if any((max(bg,fg)+.05)/(min(bg,fg)+.05) < 4.5 for bg in backgrounds for fg in foregrounds):
             raise ValueError('Choose QR and background colors with clear contrast across the full design.')
         eye=luminance(self.eye_color) if self.eye_color else None
@@ -289,6 +307,7 @@ class CodeUpdate(Input):
 
 
 class Preview(Input):
+    code_id: str | None = Field(default=None, max_length=36)
     kind: Kind = 'url'
     content: dict
     design: Design = Field(default_factory=Design)
@@ -319,6 +338,19 @@ class CardSection(Input):
     body: str = Field(min_length=1, max_length=1500)
 
 
+class CardExperience(Input):
+    role: str = Field(min_length=2, max_length=120)
+    organization: str = Field(default='', max_length=120)
+    period: str = Field(default='', max_length=80)
+    description: str = Field(default='', max_length=1000)
+
+
+class CardSocial(Input):
+    platform: Literal['linkedin','instagram','facebook','x','youtube','tiktok','github','pinterest','whatsapp','telegram']
+    url: str = Field(min_length=8, max_length=2048)
+    _url = field_validator('url')(valid_url)
+
+
 class CardInput(Input):
     name: str = Field(min_length=2, max_length=100)
     title: str = Field(default='', max_length=120)
@@ -330,11 +362,24 @@ class CardInput(Input):
     address: str = Field(default='',max_length=300)
     links: list[CardLink] = Field(default_factory=list,max_length=8)
     sections: list[CardSection] = Field(default_factory=list,max_length=10)
+    experience: list[CardExperience] = Field(default_factory=list,max_length=12)
+    social_links: list[CardSocial] = Field(default_factory=list,max_length=10)
+    profile_image: str | None = Field(default=None, max_length=700000)
+    cover_image: str | None = Field(default=None, max_length=700000)
+    company_logo: str | None = Field(default=None, max_length=700000)
     color: str = Field(default='#2563eb', pattern=r'^#[0-9a-fA-F]{6}$')
     background_end: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
     background_angle: int = Field(default=135,ge=0,le=359)
     text_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
     accent_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+
+    @field_validator('profile_image','cover_image','company_logo')
+    @classmethod
+    def media(cls,value):
+        if value:
+            from .qr import normalize_card_image
+            return normalize_card_image(value)
+        return None
 
     @model_validator(mode='after')
     def card_data(self):
@@ -345,6 +390,8 @@ class CardInput(Input):
         section_names=[section.title.casefold() for section in self.sections]
         if len(set(section_names))!=len(section_names):
             raise ValueError('Each profile section must have a different title.')
+        if len({item.platform for item in self.social_links})!=len(self.social_links):
+            raise ValueError('Add each social platform once. Use website links for additional profiles.')
         if self.text_color:
             backgrounds=[luminance(self.color)]+([luminance(self.background_end)] if self.background_end else [])
             ink=luminance(self.text_color)
