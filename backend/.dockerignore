@@ -1,0 +1,9 @@
+.env
+backend.env
+.local
+.venv
+.git
+__pycache__
+tools
+tests
+docs

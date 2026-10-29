@@ -1,0 +1,457 @@
+# Deploy TuraQRcode on CloudPanel
+
+This guide deploys the current React customer app, React administrator app, and FastAPI service with Supabase PostgreSQL. It also explains how to recreate everything excluded from Git and how to update an existing installation.
+
+**This is a deployment runbook, not a claim that a CloudPanel server has already been configured.** Local builds, browser/API tests, and Supabase persistence were verified; actual server/DNS/SMTP settings must be provided by the operator.
+
+## 1. Deployment layout
+
+Replace these example values consistently with your own domains and CloudPanel site users:
+
+| Purpose | Example |
+|---|---|
+| Customer domain | `qr.example.com` |
+| Administrator domain | `admin.qr.example.com` |
+| Customer/backend Linux site user | `tura` |
+| Administrator Linux site user | `turaadmin` |
+| Private source checkout | `/home/tura/apps/TuraQRcode` |
+| Private backend environment | `/home/tura/apps/TuraQRcode/backend/.env` |
+| Customer public document root | `/home/tura/htdocs/qr.example.com` |
+| Administrator public document root | `/home/turaadmin/htdocs/admin.qr.example.com` |
+| FastAPI listener | `127.0.0.1:8000` only |
+| Systemd service | `turaqrcode.service` |
+
+The two public sites serve only the contents of their compiled `dist` directories. Their `/api/` requests are proxied to the same local FastAPI service. The customer site also proxies `/r/` and `/c/`. No separate public API domain is required, and cookies stay first-party on each application origin.
+
+Keep the source checkout and `backend/.env` **outside both public document roots**. Do not set a site's root to the repository root or to `backend`. The database stays in Supabase; you do not need to create a CloudPanel MySQL database.
+
+## 2. Server prerequisites
+
+You need an existing CloudPanel v2 Linux server, SSH access, a sudo/root administrator for systemd/Nginx operations, your domain DNS access, and your Supabase PostgreSQL URI. Install Git, rsync, Node.js 22/npm, and Python 3.13 with its venv support before application setup.
+
+Verify as the application site user:
+
+```bash
+git --version
+node --version
+npm --version
+python3.13 --version
+```
+
+Python 3.13 is the tested runtime. If it is missing, have the server administrator install it using the host's approved runtime method; do not replace CloudPanel's system `python` binary. CloudPanel documents [adding an additional Python version](https://www.cloudpanel.io/docs/v2/python/guides/adding-a-python-version/). Its example is an older version: select the supported 3.13 runtime for this application instead. Node is needed to build the React apps; you will not run Vite in production.
+
+Allow the server to reach GitHub/npm/PyPI and the Supabase connection host. If Supabase network restrictions are enabled, allow this server's outbound IP. Keep port 8000 private; public web traffic goes through CloudPanel's HTTPS Nginx sites.
+
+## 3. Create sites, DNS, and certificates
+
+1. Point DNS records for the customer and administrator hostnames to the server. Configure IPv6 records only if IPv6 is actually available.
+2. In CloudPanel → **Sites → Add Site**, create two **Static HTML** sites using the respective domains/site users above. These are compiled React applications; they do not need Node development servers. See [CloudPanel site creation](https://www.cloudpanel.io/docs/v2/frontend-area/add-site/).
+3. In each site's Settings, confirm its Root Directory is the intended `htdocs` directory. CloudPanel allows changing this in [Domain Settings](https://www.cloudpanel.io/docs/v2/frontend-area/settings/).
+4. In each site's SSL/TLS area, use **Actions → New Let's Encrypt Certificate**, include the correct hostname, and install the certificate after DNS resolves. The initial self-signed certificate is not the final public certificate. See [CloudPanel SSL/TLS](https://www.cloudpanel.io/docs/v2/frontend-area/tls/).
+
+The commands below use the example users/paths from section 1. Check the actual values shown by CloudPanel and adjust them before running commands.
+
+## 4. Clone source as the application user
+
+Log in as `tura` using SSH, or switch from a privileged session:
+
+```bash
+sudo -iu tura
+mkdir -p /home/tura/apps
+cd /home/tura/apps
+git clone https://github.com/liyakhath-turacoz/TuraQRcode.git
+cd TuraQRcode
+git switch main
+```
+
+For a private repository, use a read-only GitHub deploy key or your approved credential helper. An SSH alternative is `git clone git@github.com:liyakhath-turacoz/TuraQRcode.git`. Do not put a personal access token in a URL, tracked file, deployment script, or shell history.
+
+## 5. Recreate Python dependencies
+
+Still as `tura`:
+
+```bash
+cd /home/tura/apps/TuraQRcode/backend
+python3.13 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Use `requirements.txt` in production. `requirements-dev.txt` adds tests, decoding tools, and audit tooling and is intended for development/staging. Do not copy a Windows `.venv` to Linux: create a new Linux virtual environment on the server.
+
+## 6. Create the private backend environment
+
+Create the template only on the first installation; never overwrite an existing `.env` during an update:
+
+```bash
+cd /home/tura/apps/TuraQRcode/backend
+umask 077
+test -f .env || cp .env.example .env
+chmod 600 .env
+nano .env
+```
+
+Use deployment-specific values, for example:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://DATABASE_USER:URL_ENCODED_PASSWORD@SUPABASE_SESSION_POOLER_HOST:5432/postgres?sslmode=require
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=YOUR_PROJECT_PUBLISHABLE_KEY
+
+PUBLIC_BASE_URL=https://qr.example.com
+FRONTEND_URL=https://qr.example.com
+CORS_ORIGINS=https://qr.example.com,https://admin.qr.example.com
+COOKIE_SECURE=true
+SESSION_HOURS=24
+
+INITIAL_ADMIN_EMAIL=Admin@turacoz.com
+INITIAL_ADMIN_PASSWORD=
+
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
+SMTP_STARTTLS=true
+```
+
+These placeholders are not working credentials. Copy the exact PostgreSQL URI from Supabase **Connect → Session pooler**. Its hostname/username depend on the project; do not infer them from the HTTPS URL. URL-encode reserved characters in the password. The publishable key cannot replace `DATABASE_URL`. The application uses a direct server-side SQL connection; it does not need a Supabase service-role key.
+
+### What each value controls
+
+| Variable | What to set or update |
+|---|---|
+| `DATABASE_URL` | Real PostgreSQL/session-pooler URI. Change after database credential rotation or when choosing a different project; restart FastAPI afterward. Keep it server-side. |
+| `SUPABASE_URL` | Your project's HTTPS URL, used by the optional Supabase endpoint diagnostic. It does not authenticate PostgreSQL. |
+| `SUPABASE_PUBLISHABLE_KEY` | Optional HTTPS diagnostic key. This is a public key, not a database password or service-role key. |
+| `PUBLIC_BASE_URL` | Stable HTTPS hostname where `/r/` and `/c/` are publicly reachable. Choose before printing codes. This determines newly generated managed QR/card URLs. |
+| `FRONTEND_URL` | Customer origin, used in recovery links. |
+| `CORS_ORIGINS` | Exact customer/admin origins, comma-separated, with no paths; keep synchronized with the real domains. Also used by Origin protection. |
+| `COOKIE_SECURE` | `true` for HTTPS production. Local HTTP development uses `false`. |
+| `SESSION_HOURS` | Login session lifetime, default 24 hours. |
+| `INITIAL_ADMIN_EMAIL` | Bootstrap administrator email. It is not an administrator-management interface. |
+| `INITIAL_ADMIN_PASSWORD` | Required only if initializing a database without the administrator. Set a private temporary password, initialize, change it on first sign-in, then clear this value. Existing accounts are not reset by initialization. |
+| `SMTP_*` | Your mail provider's host, port, credentials, sender, and STARTTLS choice. Configure and test actual email delivery before relying on emailed recovery. |
+| `SECRET_KEY` | Reserved setting in the current config/template; current sessions use random server-stored opaque tokens, so this is not a JWT signing key. Do not publish a value if you choose to set it. |
+
+If using the same Supabase database already initialized during development, its administrator/data remain present; `init` does not replace that administrator's password. For a new production database, set a private strong temporary bootstrap password rather than publishing a shared password in documentation.
+
+For stronger database certificate identity verification, use Supabase's provided CA/trust configuration with `sslmode=verify-full`. The backend enforces encrypted remote PostgreSQL connections and preserves a supplied `verify-ca`/`verify-full` setting. Keep `tura` private and do not add it to Supabase exposed API schemas. See [Supabase connection guidance](https://supabase.com/docs/guides/database/connecting-to-postgres).
+
+### Do the React apps need environment files?
+
+Not for the recommended same-origin proxy deployment. Leave `VITE_API_URL` unset/blank in both apps so requests use `/api/...` on their own domain.
+
+If you deliberately use an external API origin, set `VITE_API_URL` in each app's private build environment and rebuild that app. Any `VITE_*` value is bundled into public JavaScript. Never put database passwords, SMTP credentials, bootstrap passwords, service-role keys, or other secrets in frontend/admin environment variables. `API_PROXY_TARGET` is for Vite development only and does not configure production Nginx.
+
+## 7. Check PostgreSQL and apply migrations
+
+```bash
+cd /home/tura/apps/TuraQRcode/backend
+.venv/bin/python -m app.manage check
+.venv/bin/python -m app.manage init
+```
+
+`init` applies migrations and creates the initial administrator only if missing. Later deployments normally use `app.manage migrate`. Do not recreate tables manually or delete the existing `tura` schema to update the application.
+
+If connection checking fails, fix the URI/password/SSL/network access before starting the service. Never run destructive test launchers against Supabase. Establish a protected Supabase backup/restore procedure before applying future migrations to valuable data.
+
+## 8. Build both React applications
+
+As `tura`:
+
+```bash
+cd /home/tura/apps/TuraQRcode/frontend
+npm ci --include=dev
+npm run build
+
+cd /home/tura/apps/TuraQRcode/admin
+npm ci --include=dev
+npm run build
+```
+
+Use `npm ci` because the repository includes lockfiles. Build tooling is in dev dependencies, hence `--include=dev` even if your server has `NODE_ENV=production`. The output is `frontend/dist` and `admin/dist`; `node_modules` is not a public web root. You do not need `backend/tools` or its local PostgreSQL binaries on production.
+
+Publish only compiled files. From a **root/sudo session**, after checking that these are the two CloudPanel document roots:
+
+```bash
+test -f /home/tura/apps/TuraQRcode/frontend/dist/index.html
+test -f /home/tura/apps/TuraQRcode/admin/dist/index.html
+rsync -a --chown=tura:tura /home/tura/apps/TuraQRcode/frontend/dist/ /home/tura/htdocs/qr.example.com/
+rsync -a --chown=turaadmin:turaadmin /home/tura/apps/TuraQRcode/admin/dist/ /home/turaadmin/htdocs/admin.qr.example.com/
+```
+
+The trailing source slash copies the contents. These commands intentionally retain old hashed assets so browsers with an earlier loaded page do not immediately lose their assets. Review/prune obsolete assets separately after the relevant cache period. If CloudPanel initially created a placeholder `index.html`, this publication replaces it with the React build.
+
+## 9. Run FastAPI with systemd
+
+Use [the supplied service example](backend/deploy/cloudpanel/turaqrcode.service.example). Adapt the user, group, and paths if you changed them. As root:
+
+```bash
+sudo nano /etc/systemd/system/turaqrcode.service
+```
+
+Paste:
+
+```ini
+[Unit]
+Description=TuraQRcode FastAPI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tura
+Group=tura
+WorkingDirectory=/home/tura/apps/TuraQRcode/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/tura/apps/TuraQRcode/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The app reads its protected `backend/.env` itself; do not duplicate secrets into the service unit. One worker matches the current in-process rate limiter. Before scaling workers/servers, use a shared gateway limiter.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now turaqrcode
+sudo systemctl status turaqrcode --no-pager
+curl --fail http://127.0.0.1:8000/api/ready
+```
+
+If the service fails, inspect `sudo journalctl -u turaqrcode -n 100 --no-pager`. Check the executable path, private `.env` ownership/read access, PostgreSQL connectivity, and whether another process owns port 8000. Do not make the environment world-readable to fix permissions.
+
+## 10. Configure CloudPanel's Nginx Vhosts
+
+CloudPanel's [Vhost Editor](https://www.cloudpanel.io/docs/v2/frontend-area/vhost/) is the supported place to adjust routing. Preserve CloudPanel's generated hostnames, TLS certificate directives, HTTP-to-HTTPS redirects, logs, and ACME challenge handling. Edit the application server containing the static document root; do not paste an entire second `server` block into it.
+
+Replace the site's existing catch-all `location /` with the appropriate fragment below, and add the other location blocks at the same server level. Merge/replace duplicate locations instead of creating two `location /` blocks. Keep or merge existing hidden-file protection.
+
+### Customer site
+
+Use [frontend.locations.conf](backend/deploy/cloudpanel/frontend.locations.conf):
+
+```nginx
+client_max_body_size 2m;
+
+location ^~ /api/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+    proxy_cache off;
+    proxy_no_cache 1;
+}
+location ^~ /r/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache off;
+    proxy_no_cache 1;
+}
+location ^~ /c/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache off;
+    proxy_no_cache 1;
+}
+location ^~ /assets/ { expires 1y; try_files $uri =404; }
+location = /index.html { expires -1; }
+location ~ (^|/)\.(?!well-known(?:/|$)) { return 404; }
+location / { try_files $uri $uri/ /index.html; }
+```
+
+Keep the prefixes exactly `/api/`, `/r/`, and `/c/`: using `/r` would also match `/register`. `proxy_pass` has **no trailing slash**, preserving the FastAPI route prefix. Do not cache authenticated APIs, redirects, password forms, or published cards with a page cache/Varnish layer.
+
+### Administrator site
+
+Use [admin.locations.conf](backend/deploy/cloudpanel/admin.locations.conf):
+
+```nginx
+client_max_body_size 2m;
+location ^~ /api/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+    proxy_cache off;
+    proxy_no_cache 1;
+}
+location ^~ /assets/ { expires 1y; try_files $uri =404; }
+location = /index.html { expires -1; }
+location ~ (^|/)\.(?!well-known(?:/|$)) { return 404; }
+location / { try_files $uri $uri/ /index.html; }
+```
+
+The SPA fallback makes direct visits/refreshes such as `/app/codes` and `/users` work. The checked-in `frontend/nginx.conf` and `admin/nginx.conf` target the optional Docker network's `backend` hostname; use these **CloudPanel loopback fragments** on this host instead.
+
+Save through CloudPanel. If changing files outside the panel, validate before reloading:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## 11. Post-deployment checks
+
+```bash
+curl --fail https://qr.example.com/api/ready
+curl --fail https://admin.qr.example.com/api/ready
+curl -I https://qr.example.com/register
+curl -I https://qr.example.com/app/codes
+curl -I https://admin.qr.example.com/users
+curl -I https://qr.example.com/.env
+```
+
+Readiness should be 200; SPA routes should serve HTML; `.env` should be blocked/not found, not downloadable. Then use the browser:
+
+1. Register a real account with required policy acceptance, sign out, and sign back in.
+2. Create an editable QR, download it, scan it from a phone outside the server network, and confirm the public destination and analytics.
+3. Update its destination and confirm the printed QR still resolves. Check pause, access password, and expiry where relevant.
+4. Create a business card and test its public page/contact download.
+5. Sign in to administration, replace the temporary password if required, and verify account/code access is restricted.
+6. If SMTP is configured, request recovery and verify actual delivery and link hostname. Otherwise use the tested administrator-assisted recovery workflow.
+
+After initial administrator setup, clear `INITIAL_ADMIN_PASSWORD` from the private server `.env` and restart the API. Do not change `PUBLIC_BASE_URL` casually after distributing codes: previously printed URLs retain their original hostname and require continued routing there.
+
+## 12. What is excluded from Git and how it comes back
+
+| Not committed | Recreate/manage on the server |
+|---|---|
+| `frontend/node_modules`, `admin/node_modules` | Run `npm ci --include=dev` in each app from its committed manifest/lockfile. |
+| `backend/.venv` | Create with Python 3.13, then install committed `requirements.txt`. |
+| Real `.env` files / `backend.env` | Create privately from `.env.example`; fill the database URI, domains, mail credentials, and bootstrap configuration. Keep separate protected backups. |
+| `frontend/dist`, `admin/dist` | Run `npm run build`, then publish each build's contents to the corresponding document root. |
+| `.local` and local test PostgreSQL data | Not required in production. Production records stay in Supabase. |
+| Test reports, caches, logs | Generated when running tests or services; keep logs/backups under appropriate private server retention policies. |
+| Database contents/backups | Managed through Supabase and your backup process; Git contains migrations, not live records. |
+| SSL/private keys and Git deployment credentials | Managed through CloudPanel/your secrets/SSH configuration; never in repository files. |
+
+Commit `package.json`, **package-lock.json**, requirement files, migrations, source, documentation, and redacted `.env.example` templates. A publishable Supabase key is public by design, but a database password or service-role key is not.
+
+Ordinary `git pull` leaves untracked ignored `.env` files alone. **Do not run `git clean -fdx`, `git clean -fdX`, or overwrite `.env` from the template** on the server: these can remove ignored secrets/runtime files. Do not run `npm update` during deployment; update and test dependencies in development and commit the changed lockfiles first.
+
+## 13. Deploy an update from GitHub
+
+The following is a straightforward in-place update with a short maintenance window, not a zero-downtime release system.
+
+### Before changing the server
+
+- Push the reviewed code/lockfiles/migrations to `main` and run tests in development/staging.
+- Take a protected database backup/restore point before schema changes and verify your recovery procedure. Back up the current public builds and private configuration outside the public roots. CloudPanel site backups may not include the private `/home/tura/apps` checkout or the external Supabase database; cover them separately.
+- Record the currently deployed commit using `git rev-parse HEAD` and retain the old build artifacts for rollback.
+
+Stop the API as root so old application code is not running while the source/schema changes:
+
+```bash
+sudo systemctl stop turaqrcode
+```
+
+As `tura`, run the following **in order**, stopping on any failure:
+
+```bash
+set -e
+cd /home/tura/apps/TuraQRcode
+git status --short
+git rev-parse HEAD
+git fetch origin
+git pull --ff-only origin main
+
+cd /home/tura/apps/TuraQRcode/backend
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m app.manage check
+.venv/bin/python -m app.manage migrate
+
+cd /home/tura/apps/TuraQRcode/frontend
+npm ci --include=dev
+npm run build
+
+cd /home/tura/apps/TuraQRcode/admin
+npm ci --include=dev
+npm run build
+```
+
+If the checkout has local tracked edits, resolve them intentionally before pulling; do not force-reset the server. After review, publish the new `dist` contents using the two `rsync` commands from section 8, then as root:
+
+```bash
+sudo systemctl start turaqrcode
+sudo systemctl status turaqrcode --no-pager
+curl --fail https://qr.example.com/api/ready
+curl --fail https://admin.qr.example.com/api/ready
+```
+
+Repeat the browser checks from section 11. Static asset changes do not require a Vite process or Nginx restart; Nginx serves the newly published files. Reload Nginx only if its configuration changed, after `nginx -t`. If the systemd unit changed, run `systemctl daemon-reload` before restarting the service.
+
+### Which changes require which actions?
+
+| Change | Required action |
+|---|---|
+| Backend Python source | Pull code and restart FastAPI. |
+| `backend/requirements.txt` | Install requirements in the server venv and restart FastAPI. |
+| `backend/migrations/versions/*` | Back up first, run `app.manage migrate`, then start the matching application code. |
+| Frontend/admin React/CSS/source | Rebuild the changed app and publish its `dist`; building/publishing both is the simple default. |
+| `package.json` / lockfile | Run that app's `npm ci --include=dev`, build, and publish. |
+| Backend `.env` values | Edit only the private server file and restart FastAPI. No React rebuild for a backend database/SMTP change. |
+| A `VITE_*` public build value | Update that app's private build environment, rebuild, and republish. |
+| New keys in `.env.example` | Review the template diff; add only the required new values to your existing private `.env`. Never replace the whole file. |
+| Domain/cookie/origin change | Update DNS/certificates, routing, `PUBLIC_BASE_URL`/`FRONTEND_URL`/`CORS_ORIGINS`, and restart FastAPI; preserve old printed link hostnames. |
+| Nginx/service configuration | Review settings separately; validate/reload Nginx or daemon-reload/restart systemd as appropriate. |
+
+To review new environment keys without printing private values:
+
+```bash
+git diff PREVIOUS_COMMIT..HEAD -- backend/.env.example frontend/.env.example admin/.env.example
+```
+
+Replace `PREVIOUS_COMMIT` with the SHA recorded before the pull.
+
+## 14. Rollback
+
+If a deployment fails, leave the service stopped while investigating. Restore the previously retained customer/admin build artifacts, the recorded application revision, and its dependencies as appropriate. Use a reviewed checkout/deployment revision rather than blindly resetting a live worktree. Never delete `.env`, the Supabase database, or the `tura` schema to repair a deployment.
+
+Database migrations may change data or remove columns. Reverting Git does not revert PostgreSQL. Decide whether the previous application is compatible with the new schema; otherwise use your tested database restore procedure or a reviewed corrective migration. Do not blindly execute an Alembic downgrade against valuable production data.
+
+## 15. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| 502 from `/api/` | `systemctl status turaqrcode`, journal, loopback port 8000, and proxy target. |
+| `/register`, `/users`, or refreshed workspace returns 404 | Correct SPA `try_files`; use exact proxy prefixes ending in `/`. |
+| Sign-in works locally but not over production HTTP | Production requires HTTPS with `COOKIE_SECURE=true`; use real certificates/domains. |
+| Mutation returns “request could not be verified” | Exact Origin is in `CORS_ORIGINS`; avoid changing/stripping Origin in Nginx. |
+| Readiness is 503 | Private `.env`, PostgreSQL URI/password/SSL, Supabase network rules, migrations. |
+| `tsc`/Vite missing during build | Run `npm ci --include=dev` in the correct app. |
+| Changed public URL has no effect in the browser | Distinguish server `PUBLIC_BASE_URL` from build-time `VITE_API_URL`; restart/rebuild the relevant component. |
+| Code works on the server but not on a phone | QR still contains localhost/private hostname, public DNS/TLS is missing, or `/r/` is not routed. Regenerate undistributed codes using the correct public base. |
+| Recovery email never arrives | SMTP host/credentials/sender/STARTTLS and provider logs; administrator-assisted recovery is available. |
+| Every visitor seems rate-limited together | Ensure Uvicorn trusts only the local Nginx proxy and Nginx supplies a trusted client address; review upstream CDN real-IP settings before scaling. |
+
+## Official platform references
+
+- [CloudPanel: add sites](https://www.cloudpanel.io/docs/v2/frontend-area/add-site/)
+- [CloudPanel: domain/root/runtime settings](https://www.cloudpanel.io/docs/v2/frontend-area/settings/)
+- [CloudPanel: Vhost editor](https://www.cloudpanel.io/docs/v2/frontend-area/vhost/)
+- [CloudPanel: SSL/TLS certificates](https://www.cloudpanel.io/docs/v2/frontend-area/tls/)
+- [CloudPanel: add a Python version](https://www.cloudpanel.io/docs/v2/python/guides/adding-a-python-version/)
+- [Supabase: PostgreSQL connections](https://supabase.com/docs/guides/database/connecting-to-postgres)
+
+These platform references support the panel/DNS/TLS operations. The application-specific systemd, proxy, dependency, and update configuration above is tailored to this repository and must be validated on the target server.

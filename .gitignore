@@ -1,0 +1,30 @@
+# Dependencies, builds, and local runtimes are recreated after cloning.
+**/node_modules/
+**/dist/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.local/
+**/playwright-report/
+**/test-results/
+*.pyc
+*.log
+*.tsbuildinfo
+# Environment templates are safe to publish; real environment files are not.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+backend.env
+*.pem
+*.key
+*.pfx
+*.p12
+*.dump
+*.backup
+backups/
+.DS_Store
+Thumbs.db

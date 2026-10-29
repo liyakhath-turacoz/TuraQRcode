@@ -1,0 +1,9 @@
+{
+  "name": "@turaqrcode/frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {"dev": "vite --host 127.0.0.1 --port 5173 --strictPort", "build": "tsc --noEmit && vite build", "preview": "vite preview --host 127.0.0.1 --port 5173", "test:e2e": "playwright test"},
+  "dependencies": {"react": "^19.2.0", "react-dom": "^19.2.0", "react-router-dom": "^7.9.5", "lucide-react": "^0.468.0", "qrcode": "^1.5.4", "papaparse": "^5.5.3", "@fontsource/plus-jakarta-sans": "^5.2.8"},
+  "devDependencies": {"typescript": "~5.9.3", "@playwright/test": "^1.56.0", "@axe-core/playwright": "^4.10.2", "vite": "^6.4.1", "@vitejs/plugin-react": "^4.7.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@types/qrcode": "^1.5.6", "@types/papaparse": "^5.3.16"}
+}

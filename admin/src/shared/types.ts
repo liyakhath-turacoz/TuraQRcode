@@ -1,0 +1,10 @@
+export type User = {id:string;name:string;email:string;is_admin:boolean;is_active:boolean;must_change_password:boolean;created_at:string};
+export type Kind = 'url'|'text'|'email'|'phone'|'sms'|'wifi'|'vcard';
+export type Design = {foreground:string;background:string;pattern:'square'|'rounded'|'dots';frame:'none'|'scan';logo:string|null};
+export type Code = {id:string;name:string;kind:Kind;mode:'static'|'dynamic'|'short';slug:string;content:Record<string,string|boolean>;design:Design;project_id:string|null;is_active:boolean;expires_at:string|null;mobile_url:string|null;has_password:boolean;total_events:number;short_url:string|null;qr_payload:string;created_at:string;updated_at:string};
+export type Project = {id:string;name:string;color:string;total_codes:number;created_at:string};
+export type Card = {id:string;slug:string;name:string;title:string;company:string;email:string;phone:string;website:string;color:string;public_url:string;created_at:string};
+export type Activity={id:string;code_id:string;channel:string;device:string;referrer:string;created_at:string};
+export type Analytics={total:number;clicks:number;scans:number;daily:{date:string;count:number}[];devices:{name:string;count:number}[];referrers:{name:string;count:number}[];recent:Activity[];truncated:boolean};
+export type Overview = Analytics & {total_codes:number;active_codes:number;projects:number;top_codes:{id:string;name:string;events:number}[]};
+export type Page<T>={items:T[];total:number;page:number;limit:number};

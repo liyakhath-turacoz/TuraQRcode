@@ -1,0 +1,1 @@
+{"name":"turaqrcode-local-tools","private":true,"type":"module","scripts":{"db:local":"node ../scripts/local-db.mjs"},"dependencies":{"embedded-postgres":"^17.6.0-beta.15"}}

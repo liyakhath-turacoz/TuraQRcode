@@ -1,0 +1,24 @@
+[Unit]
+Description=TuraQRcode FastAPI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tura
+Group=tura
+WorkingDirectory=/home/tura/apps/TuraQRcode/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/tura/apps/TuraQRcode/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
