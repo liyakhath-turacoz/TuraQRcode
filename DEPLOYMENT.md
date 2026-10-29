@@ -529,3 +529,31 @@ python -m pip install -r requirements.txt
 ```
 
 Run from `backend`, restart FastAPI, then verify `/barcode-generator` and a saved tracked barcode. Fresh installations using `requirements.txt` install the correct encoder and `resvg-py` directly.
+
+## Deploying QR Scanner
+
+This update adds the customer route `/app/scanner` and its final Manage navigation item below Bulk & print. It changes only the customer frontend and documentation. No backend restart, database migration, environment variable, camera API key, or scanning service is required for this feature.
+
+After pulling the updated source, install from the committed lockfile and rebuild as the application user:
+
+```bash
+cd /home/tura/apps/TuraQRcode/frontend
+npm ci --include=dev
+npm run build
+```
+
+Publish the entire `frontend/dist` using the customer deployment procedure in section 8. Include the lazy-loaded `Scanner-*.js` and `Scanner-*.css` files as well as the main assets. Do not copy `node_modules`; `npm ci` recreates the pinned browser decoder dependencies. The existing SPA fallback must serve `/app/scanner` on direct navigation and refresh. The administrator build and backend dependencies are unchanged by this feature.
+
+Camera access uses the browser's [getUserMedia API](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia), which requires a secure context and user permission. Issue a valid HTTPS certificate for the customer domain. Localhost development works; ordinary HTTP on a LAN hostname/IP generally does not allow camera access. Image scanning remains available as a camera-free alternative.
+
+If CloudPanel, Nginx, or a CDN already sets `Permissions-Policy: camera=()`, replace that camera restriction on the **customer site only** with `camera=(self)` while preserving the other directives. For example, the existing header could become `Permissions-Policy: camera=(self), microphone=(), geolocation=()`. Avoid duplicate conflicting headers. No microphone permission is requested, and no camera frames or uploaded images are sent to FastAPI or an external decoder. The [ZXing browser decoder](https://github.com/zxing-js/browser) is bundled locally; no CDN script is required. If a custom Content Security Policy is present, allow the site's own script/style assets and local `blob:` image sources for the scanner.
+
+Verify on the deployed customer domain:
+
+1. Sign in, open QR Scanner below Bulk & print, and refresh `/app/scanner` directly.
+2. Upload a clear QR PNG with text, then one with an HTTPS URL. Confirm contents and Copy contents; Open link should open the URL. Automatic navigation must remain off until selected.
+3. Upload Code 128, Code 39, EAN-13, EAN-8, and UPC-A samples. Product-number barcodes display their value without inventing a destination.
+4. Start the camera, grant permission, and scan a code. Confirm the camera indicator turns off after success, Stop camera, switching to Upload image, switching tabs, and leaving the page. Try denying permission and then use the image fallback.
+5. Check front/rear camera selection on the intended phones and desktop cameras. Test real devices after deployment; automated virtual-camera tests cannot confirm physical focus, exposure, browser permissions, or hardware behavior.
+
+If Start camera fails, check HTTPS, browser site permissions, the customer response's Permissions-Policy, camera availability, and whether another application is using the camera. No database configuration change is needed.

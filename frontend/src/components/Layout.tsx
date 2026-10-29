@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {Link, NavLink, Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {
   Activity, Barcode, ChevronRight, ContactRound, FolderOpen,
-  LayoutDashboard, Layers, Link2, LogOut, Menu, QrCode, X,
+  LayoutDashboard, Layers, Link2, LogOut, Menu, QrCode, ScanLine, X,
 } from 'lucide-react';
 import {Brand, ErrorBox} from '../shared/ui';
 import {useAuth} from '../shared/auth';
@@ -19,6 +19,7 @@ const manageNavigation = [
   {to: '/app/barcodes', label: 'Barcodes', icon: Barcode},
   {to: '/app/business-cards', label: 'Business cards', icon: ContactRound},
   {to: '/app/bulk', label: 'Bulk & print', icon: Layers},
+  {to: '/app/scanner', label: 'QR Scanner', icon: ScanLine},
 ];
 
 function initials(name?: string) {

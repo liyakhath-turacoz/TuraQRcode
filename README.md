@@ -156,12 +156,13 @@ TuraQRcode/
 │   │   ├── accessibility.css
 │   │   ├── shared/                  This app's API, account, UI, type/style primitives
 │   │   ├── components/              Layout, QR/barcode builders, rich text, image crops, exports, charts
-│   │   └── pages/                   Public/legal, codes, organization, bulk, settings
+│   │   └── pages/                   Public/legal, codes, organization, bulk, settings, scanner
 │   ├── design-system/turaqrcode/     Visual guidance and product reference plan
 │   ├── playwright.config.ts
 │   ├── tests/e2e/product.spec.ts     Complete customer/administrator browser scenarios
 │   ├── tests/e2e/card-editor.spec.ts Inline writing/crop, public profile, social handles, five-row CSV
 │   ├── tests/e2e/export-media.spec.ts Square exports, media persistence, barcode editing, scrolling
+│   ├── tests/e2e/scanner.spec.ts     Image/camera decoding, link handling, errors, camera cleanup
 │   ├── tests/screenshots/           Representative verified interface screenshots
 │   ├── Dockerfile
 │   ├── nginx.conf                   Optional container Nginx configuration
@@ -200,6 +201,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | QR modes | Static QR codes for all supported content types; editable, trackable website, form, app, file, and supported social URL QR codes plus short links; trackable Code 128 barcodes that open a website; fixed-value retail and inventory barcodes |
 | Design | Seven module patterns, independent corner-frame and center styles, 198 contrast-checked color combinations including multi-stop linear/radial gradients for QR ink, background, or both; separate marker colors; independently styled labels positioned between the QR clear margin and canvas edge, callout/border frames, and raster PNG/JPG/WebP logo up to 500 KB and 4 megapixels |
 | Barcodes | Separate saved barcode history; Code 128, Code 39, EAN-13, EAN-8, UPC-A; EAN/UPC check digits; optional value caption; high-contrast color presets and custom colors; adjustable bar width, height, and caption size; PNG/SVG/PDF and saved bundle/print exports. Track scan requests with managed Code 128 website links. |
+| QR Scanner | Last tab in Manage, below Bulk & print. Read QR codes and Code 128, Code 39, EAN, and UPC barcodes using a camera or PNG/JPG/WebP image. Display decoded text or data, copy contents, open HTTP/HTTPS links, or opt into automatic web-link navigation. Camera selection, stop/cancel, permission-error recovery, and inverted-code decoding are included. Scans are processed locally and are not saved as codes or uploaded to the API. Opening a managed link records its normal redirect activity. |
 | Exports | PNG (256–4096 px through saved-code API), SVG, PDF, ZIP bundle with CSV index, and nine-code A4 print sheets |
 | Short links | The Links workspace lists short links only; it has its own create flow, destination, generated/custom alias, search, status/project filters, sorting, pagination, pause/resume, expiry, password protection, mobile destination, and click history. Aliases are 3–64 letters, numbers, hyphens, or underscores and globally unique |
 | Editable destinations | Update a managed URL without changing its short address or QR payload |
@@ -230,7 +232,7 @@ The customer and administrator apps keep their own UI primitives so each builds 
 
 ## Complete page inventory
 
-### Customer app — 24 routes
+### Customer app — 25 routes
 
 | Route | Page | Access |
 |---|---|---|
@@ -257,9 +259,12 @@ The customer and administrator apps keep their own UI primitives so each builds 
 | `/app/projects` | Projects/campaigns | Signed-in owner |
 | `/app/business-cards` | Digital business cards | Signed-in owner |
 | `/app/bulk` | Bulk create and print | Signed-in account |
+| `/app/scanner` | Camera/image QR and barcode scanner | Signed-in account |
 | `/app/settings` | Profile and password/security | Signed-in account |
 
 Secondary actions use dialogs rather than additional pages. Unknown routes show a friendly missing-page screen.
+
+The scanner starts the camera only after **Start camera** and stops it on a successful result, Stop/Cancel, input-method change, page exit, or when the page is hidden. Camera access requires browser permission and HTTPS in production; localhost development is supported. Image scanning accepts PNG, JPG, or WebP up to 12 MB, 8,000 px per side, and 24 megapixels. Non-web content (including Wi-Fi, contact, email, and phone payloads) is displayed as data. Automatic navigation is off by default and supports only HTTP/HTTPS URLs without embedded credentials. No scanner environment variables, external scanning service, backend route, or database migration is required.
 
 ### Administrator app — 6 routes on its own origin
 
